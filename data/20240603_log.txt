@@ -1,0 +1,41 @@
+
+//진행 순서
+
+
+.Connected.
+init_count before initialization: 0
+initialize awsJson file
+AWS JSON file initialized with invalid JSON content
+init_count after increment: 0
+succeed to open file for reading..
+deserializeError true
+start createCertificate
+No file content.
+Connecting to AWS IOT.
+clientId 
+ESP32_A0:DD:6C:0F:6F:28
+
+Connected
+
+Create certificate..
+
+incoming: $aws/certificates/create/json/accepted
+registerThing....... 
+>>>>>>>>>>>>>Sending certificate<<<<<<<<<<<
+
+incoming: $aws/provisioning-templates/claim_0603/provision/json/accepted
+Register things successfully.
+Restart in 5s.
+
+Connecting to WiFi...
+.Connected.
+
+init_count before initialization: 1
+init_count after increment: 1
+succeed to open file for reading..
+deserializeError false
+Connecting to AWS AWS_IOT_ENDPOINT
+
+Connected
+
+Subscription topic: cmd/esp32dkc_A0:DD:6C:0F:6F:28
