@@ -21,19 +21,41 @@
 #include <PubSubClient.h>
 #include <Preferences.h>
 #include "config.h"
+#include "serial_communication.h"
+#include "main.h"
+
+#define DEBUG
+
+// EPS32 serial port  참조 사이트 : https://circuits4you.com/2018/12/31/esp32-hardware-serial2-example/
+/*
+ * There are three serial ports on the ESP known as U0UXD, U1UXD and U2UXD.
+ * 
+ * U0UXD is used to communicate with the ESP32 for programming and during reset/boot.
+ * U1UXD is unused and can be used for your projects. Some boards use this port for SPI Flash access though
+ * U2UXD is unused and can be used for your projects.
+ * 
+*/
+
+#define RXD2 16
+#define TXD2 17
 
 WiFiClientSecure net;
 PubSubClient client(net);
 
 Preferences preferences;
-int init_count = 0;
 
-void initializeAwsJson();
-void saveCertificateToFS(DynamicJsonDocument doc);
-void registerThing(DynamicJsonDocument doc);
-void messageHandler(String topic, byte *payload, int length);
-void connectToAWS(DynamicJsonDocument cert);
-void createCertificate();
+int init_count = 0;
+unsigned long start_time;
+unsigned long end_time;
+
+// // port(5,6) ozs serial 통신
+// SoftwareSerial SerialPort(D5,D6);
+
+String receivedString = ""; // 수신된 문자열을 저장할 변수
+bool insideBrackets = false; // '['와 ']' 사이의 문자열인지 여부를 나타내는 플래그
+
+
+
 
 void initializeAwsJson()
 {
@@ -89,13 +111,27 @@ void registerThing(DynamicJsonDocument doc)
 
 void messageHandler(String topic, byte *payload, int length)
 {
+
+  start_time = millis();
+
   Serial.print("incoming: ");
   Serial.println(topic);
-  DynamicJsonDocument doc(length);
+  // DynamicJsonDocument doc(length);
+  DynamicJsonDocument doc(1000);
 
   //2024-06-03 : payload에 provision에서 발행된 인증서가 실려 온다. 이것을 /aws.json 파일에 저장을 하고 , 저장된 파일을 이용해서 iot 관련 서비스를 진행하면 된다. 먼저 $aws/certificates/create/json/accepted, 받아서 실행을하고, registerThings에서 $aws/provisioning-templates/claim_0603/provision/json를 publish 하면 받아서 restart 하게 된다.  
 
+  String subscriptionTopic = String(AWS_IOT_SUB_TOPIC) + WiFi.macAddress();
+  char subTopic[100];
+  subscriptionTopic.toCharArray(subTopic, 100);
+
   deserializeJson(doc, payload);
+
+  String output;
+  serializeJsonPretty(doc, output);
+  Serial.print("messageHandler Received JSON: ");
+  Serial.println(output);
+
   if (topic == "$aws/certificates/create/json/accepted")
   {
     saveCertificateToFS(doc);
@@ -108,6 +144,11 @@ void messageHandler(String topic, byte *payload, int length)
     sleep(5);
     ESP.restart();
   }
+  else if(topic == subTopic){
+    Serial.print("match subscription topic =");
+    Serial.println(subTopic);
+    on_message_received(topic, doc , length);
+  }
 }
 
 void connectToAWS(DynamicJsonDocument cert)
@@ -118,31 +159,104 @@ void connectToAWS(DynamicJsonDocument cert)
   client.setServer(AWS_IOT_ENDPOINT, 8883);
   // Create a message handler
   client.setCallback(messageHandler);
-  client.setBufferSize(4000);
+  client.setBufferSize(10000);
   Serial.print("Connecting to AWS IOT.");
 
   String clientId = "ESP32_" + WiFi.macAddress(); // 고유한 클라이언트 ID 생성
-  client.connect(clientId.c_str());
-  if (!client.connected())
-  {
+  unsigned long startAttemptTime = millis();
+  const unsigned long timeout = 5000;  // 5초 동안 시도
+  
+  // // 연결 시도
+  while (!client.connected() && millis() - startAttemptTime < timeout) {
+    Serial.print(".");
+    client.connect(clientId.c_str());
+    
+    
+  }
+
+  if (client.connected()) {
+    Serial.println("Connected");
+    Serial.print("MQTT state: ");
+    Serial.println(client.state());  // MQTT 클라이언트 상태 출력
+    delay(100);
+  } else {
     Serial.println("Timeout!");
-    return;
+    // 여기에 적절한 오류 처리 코드 추가 (예: 오류 메시지 출력, 재시도, 시스템 재시작 등)
     // ESP.restart();
   }
-  Serial.println("Connected");
-  String subscriptionTopic = String(AWS_IOT_SUB_TOPIC) + "_" + WiFi.macAddress();
-  char topic[50];
-  subscriptionTopic.toCharArray(topic, 50);
+
+  delay(1000);
+
+  // topic 합성 : ozs/client8266/ + mac 주소
+  String subscriptionTopic = String(AWS_IOT_SUB_TOPIC) + WiFi.macAddress();
+  char topic[100];
+  subscriptionTopic.toCharArray(topic, 100);
   Serial.printf("Subscription topic: %s", topic);
   Serial.println();
   client.subscribe(topic);
 
-  // 테스트 메시지 발행
-  String testTopic = String(AWS_IOT_PUB_TOPIC) + "_" + WiFi.macAddress();
-  char pubTopic[50];
-  testTopic.toCharArray(pubTopic, 50);
-  String payload = "{\"message\": \"Hello from ESP32 안녕하세요...\"}";
-  if (client.publish(pubTopic, payload.c_str()))
+  delay(2000);
+
+  // 2024-06-04 : send wifi ready
+  send_wifi_ready();
+
+  // // 테스트 메시지 발행
+  // String testTopic = String(AWS_IOT_PUB_TOPIC) + "_" + WiFi.macAddress();
+  // char pubTopic[50];
+  // testTopic.toCharArray(pubTopic, 50);
+  // String payload = "{\"message\": \"Hello from ESP32 안녕하세요...\"}";
+  // if (client.publish(pubTopic, payload.c_str()))
+  // {
+  //   Serial.printf("Publish to topic %s successful\n", pubTopic);
+  // }
+  // else
+  // {
+  //   Serial.printf("Publish to topic %s failed\n", pubTopic);
+  // }
+}
+
+
+void publish_ozs_status(String &message){
+
+  #ifdef DEBUG
+  Serial.println("report ozs board status......." + message);
+  #endif
+
+  // ":" delimiter로 message를 분리
+  int delimiterIndex = message.indexOf(':');
+  String firstToken = message.substring(0, delimiterIndex);
+  firstToken.trim();
+
+  Serial.println("firstToke = " + firstToken);
+  String secondToken = message.substring(delimiterIndex + 1);
+
+  delimiterIndex = secondToken.indexOf(':');
+  String status = secondToken.substring(0,delimiterIndex);
+  String time = secondToken.substring(delimiterIndex+1);
+  
+  #ifdef DEBUG
+  Serial.println("status = " + status);
+  Serial.println("time = " + time);
+  #endif
+
+
+  StaticJsonDocument<200> doc;
+
+  doc["status"] = status;
+  doc["time"] = time;
+
+  char publishBuffer[512];
+  serializeJson(doc, publishBuffer); // print to client
+
+
+// topic 합성 : ozs/client8266/ + mac 주소
+  String publishTopic = String(AWS_IOT_PUB_TOPIC) + WiFi.macAddress();
+  char pubTopic[100];
+  publishTopic.toCharArray(pubTopic, 100);
+  Serial.printf("publish topic: %s", pubTopic);
+
+
+  if (client.publish(pubTopic, publishBuffer))
   {
     Serial.printf("Publish to topic %s successful\n", pubTopic);
   }
@@ -150,8 +264,65 @@ void connectToAWS(DynamicJsonDocument cert)
   {
     Serial.printf("Publish to topic %s failed\n", pubTopic);
   }
+
+
+  end_time = millis();
+
+  unsigned long elapsedTime = end_time - start_time;
+  Serial.print("Message handling and publishing took: ");
+  Serial.print(elapsedTime);
+  Serial.println(" ms");
+
+
 }
 
+void publish_ozs_system_info(String &message){
+  
+  Serial.println("report ozs system info = " + message);
+
+  // ":" delimiter로 message를 분리
+  int delimiterIndex = message.indexOf(':');
+  String firstToken = message.substring(0, delimiterIndex);
+
+#ifdef DEBUG
+  Serial.println("firstToke = " + firstToken);
+#endif
+  String info = message.substring(delimiterIndex + 1);
+
+
+  
+  Serial.println("publish_ozs_system_info  info = " + info);
+
+  String clientId = "" + WiFi.macAddress();
+  
+  StaticJsonDocument<200> doc;
+
+  doc["info"] = info;
+  doc["serial"] = clientId;
+  
+  // Data 합성
+  char publishData[512];
+  serializeJson(doc, publishData); // print to client
+
+  // topic 합성 : ozs/client8266/ + mac 주소
+  String publishTopic = String(AWS_IOT_PUB_TOPIC) + WiFi.macAddress();
+  char pubTopic[100];
+  publishTopic.toCharArray(pubTopic, 100);
+  Serial.printf("publish topic: %s", pubTopic);
+
+
+  client.publish(pubTopic, publishData);
+
+ 
+  end_time = millis();
+
+  unsigned long elapsedTime = end_time - start_time;
+  Serial.print("Message handling and publishing took: ");
+  Serial.print(elapsedTime);
+  Serial.println(" ms");
+
+
+}
 void createCertificate()
 {
   Serial.println("No file content.");
@@ -207,6 +378,11 @@ messageHandler 함수가 AWS IoT Core의 응답을 처리합니다.
 void setup()
 {
   Serial.begin(115200);
+
+  // Note the format for setting a serial port is as follows: Serial2.begin(baud-rate, protocol, RX pin, TX pin);
+ 
+  Serial2.begin(115200, SERIAL_8N1, RXD2, TXD2);
+
   WiFi.mode(WIFI_STA);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
   Serial.print("Connecting to WiFi..");
@@ -285,25 +461,55 @@ void setup()
     else{  
           Serial.print("init_count > 0 ");
           Serial.println(init_count);
-          // if (cert["certificatePem"])
-          // {
-          //   Serial.println("cert data exits");
-          //   connectToAWS(cert);
-          // }
-          // else{
-          //   Serial.println("cert data doesn't exits");
-          // }
+          
     }
     
   }
   file.close();
 }
 
+
+void reconnectMQTT() {
+  if (!client.connected()) {
+    Serial.print("Reconnecting to MQTT...");
+    while (!client.connected()) {
+      Serial.print(".");
+      String clientId = "ESP32_" + WiFi.macAddress();
+      if (client.connect(clientId.c_str())) {
+        Serial.println("Connected");
+        // Resubscribe or perform other setup tasks
+      } else {
+        Serial.print("Failed, rc=");
+        Serial.print(client.state());
+        Serial.println(" try again in 5 seconds");
+        delay(5000);
+      }
+    }
+  }
+}
+
+void ensureWiFiConnection() {
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("WiFi connection lost. Reconnecting...");
+    while (WiFi.status() != WL_CONNECTED) {
+      delay(1000);
+      Serial.print(".");
+      WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+    }
+    Serial.println("Reconnected to WiFi.");
+  }
+}
+
 void loop()
 {
+
+  // ensureWiFiConnection();
+  // reconnectMQTT();
+
   client.loop();
 
-  // Serial 명령 처리
+
+  // 2024-06-04 computer terminal로 들어온 Serial 명령 처리
   if (Serial.available()) {
     String command = Serial.readStringUntil('\n');
     command.trim();  // 공백 제거
@@ -318,4 +524,55 @@ void loop()
       Serial.println("init_count has been reset to 1");
     }
   }
+  
+
+
+  // 2024-05-06 :SerialPort로부터 데이터를 읽어옴
+  // OZS 보드에서 MQTT가 연결이 되었는지 확인 메세지를 처리한다. 
+  // 확인 메세지 "hello 8226"
+  // 2024-06-04 : ESP32로 upgrade함.
+
+  while (Serial2.available() > 0) {
+     // 시리얼 데이터 읽기
+    char incomingChar = Serial2.read();
+
+    // '['가 들어오면 내부 문자열 시작
+    if (incomingChar == '[') {
+      insideBrackets = true;
+      receivedString = ""; // 새로운 문자열 시작
+    }
+    // ']'가 들어오면 내부 문자열 끝
+    else if (incomingChar == ']') {
+      insideBrackets = false;
+      
+      // 내부 문자열을 처리 (예: 시리얼 모니터로 출력)
+      Serial.println(" Rx=" + receivedString);
+
+      // 2024-05-06 : "8266" 문자열이 포함되어 있는지 확인하여 처리
+      if (receivedString.indexOf("8266") != -1) {
+        // "8266"이 포함되어 있으면 send_wifi_ready() 함수 호출
+        send_wifi_ready();
+      }
+      else if(receivedString.indexOf("OZS") != -1){
+        publish_ozs_status(receivedString);
+      }
+      else if(receivedString.indexOf("SYSINFO") != -1){
+         publish_ozs_system_info(receivedString);
+      }
+      else{
+        Serial.println("loop: critical error:");
+      }
+
+
+    }
+    // '['와 ']' 사이의 문자열인 경우 receivedString에 문자 추가
+    else if (insideBrackets) {
+      receivedString += incomingChar;
+    }
+  }
+
+  //2024-05-29 : 10ms 마다 한번씩 체크한다. 시간을 획기적으로 줄였다.
+  delay(100);
+
+
 }
