@@ -146,34 +146,13 @@ void on_message_received(String &topic, DynamicJsonDocument doc, int length) {
 #ifdef DEBUG
     Serial.print("on_message_received topic: ");
     Serial.println(topic);
-    // Serial.print("': ");
 
-   
-    //  deserializeJson(doc, payload);
-
-     String output;
+    String output;
     serializeJsonPretty(doc, output);
     Serial.print("on_message_received JSON: ");
     Serial.println(output);
    
 #endif
-
-    // // Parse JSON payload
-    // StaticJsonDocument<200> doc; // Adjust the size as needed
-    // DeserializationError error = deserializeJson(doc, payload);
-
-    // if (error) {
-    //     Serial.print("deserializeJson() failed: ");
-    //     Serial.println(error.f_str());
-    //     return;
-    // }
-
-    // Serialize JSON document to a string
-    // char jsonBuffer[200];
-    // serializeJsonPretty(doc, jsonBuffer, sizeof(jsonBuffer));
-
-
-
     // Check if "start" key exists
     if (doc.containsKey("start")) {
         // Get the "start" object

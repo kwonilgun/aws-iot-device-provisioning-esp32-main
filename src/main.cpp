@@ -159,33 +159,47 @@ void connectToAWS(DynamicJsonDocument cert)
   client.setServer(AWS_IOT_ENDPOINT, 8883);
   // Create a message handler
   client.setCallback(messageHandler);
-  client.setBufferSize(10000);
+
+  //💇‍♀️🧚‍♀️ 2024-06-04 Sets the keep alive interval used by the client. This value should only be changed when the client is not connected. 이것을 이용해서 keep alive 시간을 조정할 수 있다. 계속해서 c0 00 을 보낸다. 
+  // /Users/kwon/.platformio/packages/framework-arduinoespressif32/libraries/WiFiClientSecure/src/ssl_client.cpp 에서  send_ssl_data(sslclient_context *ssl_client, const uint8_t *data, size_t len), 데이터를 계속해서 보낸다.
+
+  // 참조 사이트: PubSubClient API : https://pubsubclient.knolleary.net/api#setKeepAlive
+
+
+  client.setKeepAlive(30 * 4);
+
+  
+  
+  if(client.setBufferSize(4000)){
+    Serial.println("buffer resized");
+  }
+  else{
+    Serial.println("buffer could not be resized");
+  }
   Serial.print("Connecting to AWS IOT.");
 
   String clientId = "ESP32_" + WiFi.macAddress(); // 고유한 클라이언트 ID 생성
   unsigned long startAttemptTime = millis();
   const unsigned long timeout = 5000;  // 5초 동안 시도
   
-  // // 연결 시도
+  // 연결 시도
   while (!client.connected() && millis() - startAttemptTime < timeout) {
     Serial.print(".");
-    client.connect(clientId.c_str());
-    
-    
+    if (client.connect(clientId.c_str())) { // 수정된 부분: client.connect()를 if 문으로 감싸서 연결 성공 여부 확인
+      Serial.println("Connected");
+      Serial.print("MQTT state: ");
+      Serial.println(client.state());  // MQTT 클라이언트 상태 출력
+      delay(100);
+    }
   }
 
-  if (client.connected()) {
-    Serial.println("Connected");
-    Serial.print("MQTT state: ");
-    Serial.println(client.state());  // MQTT 클라이언트 상태 출력
-    delay(100);
-  } else {
+  if (!client.connected()) {
     Serial.println("Timeout!");
     // 여기에 적절한 오류 처리 코드 추가 (예: 오류 메시지 출력, 재시도, 시스템 재시작 등)
     // ESP.restart();
   }
 
-  delay(1000);
+  // delay(1000);
 
   // topic 합성 : ozs/client8266/ + mac 주소
   String subscriptionTopic = String(AWS_IOT_SUB_TOPIC) + WiFi.macAddress();
@@ -194,27 +208,15 @@ void connectToAWS(DynamicJsonDocument cert)
   Serial.printf("Subscription topic: %s", topic);
   Serial.println();
   client.subscribe(topic);
+  
 
-  delay(2000);
+  // delay(2000);
 
   // 2024-06-04 : send wifi ready
   send_wifi_ready();
 
-  // // 테스트 메시지 발행
-  // String testTopic = String(AWS_IOT_PUB_TOPIC) + "_" + WiFi.macAddress();
-  // char pubTopic[50];
-  // testTopic.toCharArray(pubTopic, 50);
-  // String payload = "{\"message\": \"Hello from ESP32 안녕하세요...\"}";
-  // if (client.publish(pubTopic, payload.c_str()))
-  // {
-  //   Serial.printf("Publish to topic %s successful\n", pubTopic);
-  // }
-  // else
-  // {
-  //   Serial.printf("Publish to topic %s failed\n", pubTopic);
-  // }
+  
 }
-
 
 void publish_ozs_status(String &message){
 
@@ -254,22 +256,25 @@ void publish_ozs_status(String &message){
   char pubTopic[100];
   publishTopic.toCharArray(pubTopic, 100);
   Serial.printf("publish topic: %s", pubTopic);
+  Serial.println();
 
-
-  if (client.publish(pubTopic, publishBuffer))
+//2024-06-05 : client.publish(pubTopic, publishBuffer, 0), the third parameter 0 specifies that the message should be delivered with QoS 0 (at most once).
+  if (client.publish(pubTopic, publishBuffer, 0))
   {
     Serial.printf("Publish to topic %s successful\n", pubTopic);
+    Serial.println();
   }
   else
   {
     Serial.printf("Publish to topic %s failed\n", pubTopic);
+    Serial.println();
   }
 
 
   end_time = millis();
 
   unsigned long elapsedTime = end_time - start_time;
-  Serial.print("Message handling and publishing took: ");
+  Serial.print("\n Message handling and publishing took: ");
   Serial.print(elapsedTime);
   Serial.println(" ms");
 
@@ -309,20 +314,29 @@ void publish_ozs_system_info(String &message){
   char pubTopic[100];
   publishTopic.toCharArray(pubTopic, 100);
   Serial.printf("publish topic: %s", pubTopic);
+  Serial.println();
 
+  // client.publish(pubTopic, publishData, 0);
 
-  client.publish(pubTopic, publishData);
+  //2024-06-05 : client.publish(pubTopic, publishBuffer, 0), the third parameter 0 specifies that the message should be delivered with QoS 0 (at most once).
+  if (client.publish(pubTopic, publishData, 0))
+  {
+    Serial.printf("Publish to topic %s successful\n", pubTopic);
+  }
+  else
+  {
+    Serial.printf("Publish to topic %s failed\n", pubTopic);
+  }
 
- 
   end_time = millis();
 
   unsigned long elapsedTime = end_time - start_time;
-  Serial.print("Message handling and publishing took: ");
+  Serial.print("\nMessage handling and publishing took: ");
   Serial.print(elapsedTime);
   Serial.println(" ms");
 
-
 }
+
 void createCertificate()
 {
   Serial.println("No file content.");
@@ -374,6 +388,38 @@ messageHandler 함수가 AWS IoT Core의 응답을 처리합니다.
   */
   client.publish("$aws/certificates/create/json", "");
 }
+
+
+void reconnect() {
+  // 연결 시도 및 실패 시 재시도
+  while (!client.connected()) {
+    Serial.print("Attempting MQTT connection...");
+    // 클라이언트 ID 설정
+    String clientId = "ESP32_" + WiFi.macAddress(); // 고유한 클라이언트 ID 생성
+    // clientId += String(random(0xffff), HEX);
+    // // MQTT 브로커에 연결 시도
+    if (client.connect(clientId.c_str())) {
+      Serial.println("reconnected");
+      // topic 합성 : ozs/client8266/ + mac 주소
+        String subscriptionTopic = String(AWS_IOT_SUB_TOPIC) + WiFi.macAddress();
+        char topic[100];
+        subscriptionTopic.toCharArray(topic, 100);
+        Serial.printf("reSubscription topic: %s", topic);
+        Serial.println();
+        client.subscribe(topic);
+
+        // 2024-06-04 : send wifi ready
+        send_wifi_ready();
+
+    } else {
+      Serial.print("failed, rc=");
+      Serial.print(client.state());
+      Serial.println(" try again in 5 seconds");
+      delay(5000);
+    }
+  }
+}
+
 
 void setup()
 {
@@ -468,44 +514,16 @@ void setup()
   file.close();
 }
 
-
-void reconnectMQTT() {
-  if (!client.connected()) {
-    Serial.print("Reconnecting to MQTT...");
-    while (!client.connected()) {
-      Serial.print(".");
-      String clientId = "ESP32_" + WiFi.macAddress();
-      if (client.connect(clientId.c_str())) {
-        Serial.println("Connected");
-        // Resubscribe or perform other setup tasks
-      } else {
-        Serial.print("Failed, rc=");
-        Serial.print(client.state());
-        Serial.println(" try again in 5 seconds");
-        delay(5000);
-      }
-    }
-  }
-}
-
-void ensureWiFiConnection() {
-  if (WiFi.status() != WL_CONNECTED) {
-    Serial.println("WiFi connection lost. Reconnecting...");
-    while (WiFi.status() != WL_CONNECTED) {
-      delay(1000);
-      Serial.print(".");
-      WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-    }
-    Serial.println("Reconnected to WiFi.");
-  }
-}
-
 void loop()
 {
 
-  // ensureWiFiConnection();
-  // reconnectMQTT();
-
+  
+  if (!client.connected()) {
+    Serial.println("\n\n>>>>>>>>>>client connected error occurs..Restart.<<<<<<<<<<<<<\n\n");
+    // reconnect();
+    ESP.restart();
+    return;
+  }
   client.loop();
 
 
@@ -522,6 +540,14 @@ void loop()
       init_count = 1;
       preferences.putInt("init_count", init_count);
       Serial.println("init_count has been reset to 1");
+    }
+    else if (command.equals("MQTT_DISCONNECT")){
+      Serial.println("mqtt disconnect test.. ");
+      client.disconnect();
+      delay(2000);
+    }
+    else{
+      Serial.println("Serial input command error!!!!!!!!");
     }
   }
   
@@ -560,7 +586,7 @@ void loop()
          publish_ozs_system_info(receivedString);
       }
       else{
-        Serial.println("loop: critical error:");
+        Serial.println("Serial2: critical error:!!!!!!");
       }
 
 
@@ -572,7 +598,7 @@ void loop()
   }
 
   //2024-05-29 : 10ms 마다 한번씩 체크한다. 시간을 획기적으로 줄였다.
-  delay(100);
+  // delay(100);
 
 
 }
