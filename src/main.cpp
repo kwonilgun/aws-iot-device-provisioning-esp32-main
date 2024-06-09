@@ -459,13 +459,19 @@ void initWifiManager() {
     // wm.setCustomHeadElement(custom_html);
 
      // 설정 포털 Timeout 설정 (예: 60초 후 자동으로 닫힘)
-    // wm.setConfigPortalTimeout(60);
+    wm.setConfigPortalTimeout(60);
 
-    // wm.setCu
+    
+
+    //2024-06-09 :  Remove all buttons except the wifi config and exit
+    std::vector<const char *> wm_menu  = {"wifi", "exit"};
+    wm.setMenu(wm_menu);
 
     // reset settings - wipe stored credentials for testing
     // these are stored by the esp library
     wm.resetSettings();
+
+    
 
     // Automatically connect using saved credentials,
     // if connection fails, it starts an access point with the specified name ( "AutoConnectAP"),
@@ -474,7 +480,7 @@ void initWifiManager() {
 
     bool res;
     // res = wm.autoConnect(); // auto generated AP name from chipid
-    res = wm.autoConnect("RootOneAI_OZS_AP"); // anonymous ap
+    res = wm.autoConnect("루트원 AI-AP"); // anonymous ap
     // res = wm.autoConnect("AutoConnectAP","password"); // password protected ap
 
     if(!res) {
@@ -541,7 +547,7 @@ void setup()
   }
   Serial.println("Connected.");
 
-  
+  wm.setDebugOutput(true);
   // int count = GetIniInt("cert_count", "count", 10);
   
   // Serial.printf("\ninit_count before initialization: : %d", count);
