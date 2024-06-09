@@ -15,12 +15,12 @@
 
 
 // 2024-05-29 define asw iot server, 로컬용일 때는 block 하면된다. 
-// #define AWS_IOT_SERVER
+#define AWS_IOT_SERVER
 
 
 // WiFi Configuration
-#define WIFI_SSID "TIQUAD"       // <= Edit WiFi SSID.
-#define WIFI_PASSWORD "na1048ho" // <= Edit WiFi password.
+// #define WIFI_SSID "TIQUAD"       // <= Edit WiFi SSID.
+// #define WIFI_PASSWORD "na1048ho" // <= Edit WiFi password.
 
 // const char WIFI_SSID[] = "U+NetC610";
 // const char WIFI_PASSWORD[] = "191B1J5D@6";
@@ -31,7 +31,7 @@
 #define AWS_IOT_SUB_TOPIC "ozs/client8266/"
 
 #ifdef AWS_IOT_SERVER
-     #define AWS_IOT_PUB_TOPIC "ozs/awsServerIot/"
+     #define AWS_IOT_PUB_TOPIC "ozs/awsServerAwsIot/"
 #else
      #define AWS_IOT_PUB_TOPIC "ozs/awsServerLocalIot/"
 #endif

@@ -23,6 +23,10 @@
 #include "config.h"
 #include "serial_communication.h"
 #include "main.h"
+#include "util.h"
+
+//2024-06-08 :  wifi manager 추가
+#include <WiFiManager.h> // https://github.com/tzapu/WiFiManager
 
 #define DEBUG
 
@@ -129,8 +133,8 @@ void messageHandler(String topic, byte *payload, int length)
 
   String output;
   serializeJsonPretty(doc, output);
-  Serial.print("messageHandler Received JSON: ");
-  Serial.println(output);
+  // Serial.print("messageHandler Received JSON: ");
+  // Serial.println(output);
 
   if (topic == "$aws/certificates/create/json/accepted")
   {
@@ -145,7 +149,7 @@ void messageHandler(String topic, byte *payload, int length)
     ESP.restart();
   }
   else if(topic == subTopic){
-    Serial.print("match subscription topic =");
+    Serial.print("messageHandler: match subscription topic =");
     Serial.println(subTopic);
     on_message_received(topic, doc , length);
   }
@@ -166,7 +170,8 @@ void connectToAWS(DynamicJsonDocument cert)
   // 참조 사이트: PubSubClient API : https://pubsubclient.knolleary.net/api#setKeepAlive
 
 
-  client.setKeepAlive(30 * 4);
+  //2024-06-05 : 5분에 한번씩 PINGREQ를 보낸다.  
+  client.setKeepAlive(30 * 10);
 
   
   
@@ -229,7 +234,7 @@ void publish_ozs_status(String &message){
   String firstToken = message.substring(0, delimiterIndex);
   firstToken.trim();
 
-  Serial.println("firstToke = " + firstToken);
+  // Serial.println("firstToke = " + firstToken);
   String secondToken = message.substring(delimiterIndex + 1);
 
   delimiterIndex = secondToken.indexOf(':');
@@ -259,7 +264,7 @@ void publish_ozs_status(String &message){
   Serial.println();
 
 //2024-06-05 : client.publish(pubTopic, publishBuffer, 0), the third parameter 0 specifies that the message should be delivered with QoS 0 (at most once).
-  if (client.publish(pubTopic, publishBuffer, 0))
+  if (client.publish(pubTopic, publishBuffer))
   {
     Serial.printf("Publish to topic %s successful\n", pubTopic);
     Serial.println();
@@ -283,14 +288,14 @@ void publish_ozs_status(String &message){
 
 void publish_ozs_system_info(String &message){
   
-  Serial.println("report ozs system info = " + message);
+  // Serial.println("report ozs system info = " + message);
 
   // ":" delimiter로 message를 분리
   int delimiterIndex = message.indexOf(':');
   String firstToken = message.substring(0, delimiterIndex);
 
 #ifdef DEBUG
-  Serial.println("firstToke = " + firstToken);
+  // Serial.println("firstToke = " + firstToken);
 #endif
   String info = message.substring(delimiterIndex + 1);
 
@@ -319,7 +324,7 @@ void publish_ozs_system_info(String &message){
   // client.publish(pubTopic, publishData, 0);
 
   //2024-06-05 : client.publish(pubTopic, publishBuffer, 0), the third parameter 0 specifies that the message should be delivered with QoS 0 (at most once).
-  if (client.publish(pubTopic, publishData, 0))
+  if (client.publish(pubTopic, publishData))
   {
     Serial.printf("Publish to topic %s successful\n", pubTopic);
   }
@@ -421,6 +426,67 @@ void reconnect() {
 }
 
 
+const char* custom_html = R"(
+<!DOCTYPE html>
+<html>
+<head>
+    <title>오존 살균기 와이파이 매니저</title>
+    <style>
+        /* 사용자 정의 CSS 스타일 */
+    </style>
+</head>
+<body>
+    <h1>오존 살균기 와이파이 설정</h1>
+    <form action="/wifisave" method="post">
+        <label for="ssid">SSID 번호:</label>
+        <input type="text" id="ssid" name="s">
+        <br>
+        <label for="password">패스워드:</label>
+        <input type="text" id="password" name="p">
+        <br>
+        <input type="submit" value="저장">
+    </form>
+</body>
+</html>
+)";
+
+
+void initWifiManager() {
+    //WiFiManager, Local intialization. Once its business is done, there is no need to keep it around
+    WiFiManager wm;
+
+    
+    // wm.setCustomHeadElement(custom_html);
+
+     // 설정 포털 Timeout 설정 (예: 60초 후 자동으로 닫힘)
+    // wm.setConfigPortalTimeout(60);
+
+    // wm.setCu
+
+    // reset settings - wipe stored credentials for testing
+    // these are stored by the esp library
+    wm.resetSettings();
+
+    // Automatically connect using saved credentials,
+    // if connection fails, it starts an access point with the specified name ( "AutoConnectAP"),
+    // if empty will auto generate SSID, if password is blank it will be anonymous AP (wm.autoConnect())
+    // then goes into a blocking loop awaiting configuration and will return success result
+
+    bool res;
+    // res = wm.autoConnect(); // auto generated AP name from chipid
+    res = wm.autoConnect("RootOneAI_OZS_AP"); // anonymous ap
+    // res = wm.autoConnect("AutoConnectAP","password"); // password protected ap
+
+    if(!res) {
+        Serial.println("Failed to connect");
+        // ESP.restart();
+    } 
+    else {
+        //if you get here you have connected to the WiFi    
+        Serial.println("connected...yeey :)");
+    }
+}
+
 void setup()
 {
   Serial.begin(115200);
@@ -429,16 +495,6 @@ void setup()
  
   Serial2.begin(115200, SERIAL_8N1, RXD2, TXD2);
 
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-  Serial.print("Connecting to WiFi..");
-  while (WiFi.status() != WL_CONNECTED)
-  {
-    delay(1000);
-    Serial.print(".");
-  }
-  Serial.println("Connected.");
-
   // Init SPIFFS.
   if (!SPIFFS.begin(true))
   {
@@ -446,24 +502,50 @@ void setup()
     return;
   }
 
-  // Init NVS.
-  preferences.begin("my-app", false);
-  init_count = preferences.getInt("init_count", 0);
-  
-  Serial.print("init_count before initialization: ");
-  Serial.println(init_count);
+  WiFi.mode(WIFI_STA);
+  // WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  Serial.print("Connecting to WiFi..");
 
-  if (init_count == 0) {
-    // 2024-06-03 : 💇‍♀️ /aws.json 이 파일을 초기화 한다. 이것은 최초는 json 포맷 에러가 발생하도록 한다. 
-    Serial.println("initialize awsJson file");
-    initializeAwsJson();
+  String check_ssid =  GetIniString("softap", "ssid", "none");
+  Serial.println(check_ssid);
+
+  // Attempt to connect to WiFi
+  WiFiManager wm;
+  if (check_ssid == "none") {
+    // No stored SSID, start WiFiManager
+    SetIniString("softap", "ssid", "operate");
+    initWifiManager();
+
+    // // Init NVS.
+    //   preferences.begin("my-app", false);
+    //   init_count = preferences.getInt("init_count", 0);
+    //   preferences.end();
+    // SetIniInt("cert_count", "count", 0);
+
+  } else {
+    // Try to connect using stored credentials
+    WiFi.begin();
+    unsigned long startAttemptTime = millis();
+    while (WiFi.status() != WL_CONNECTED && millis() - startAttemptTime < 10000) {
+      delay(500);
+      Serial.print(".");
+    }
+    if (WiFi.status() != WL_CONNECTED) {
+      // Connection failed, reset stored credentials and start WiFiManager
+      Serial.println("Connection failed, starting WiFiManager...");
+      wm.resetSettings();
+      initWifiManager();
+    } else {
+      Serial.println("Connected.");
+    }
   }
+  Serial.println("Connected.");
 
-  // init_count++;
-  // preferences.putInt("init_count", init_count);
   
-  Serial.print("init_count : ");
-  Serial.println(init_count);
+  // int count = GetIniInt("cert_count", "count", 10);
+  
+  // Serial.printf("\ninit_count before initialization: : %d", count);
+  // Serial.println(init_count);
 
   // Read AWS config file.
   File file = SPIFFS.open("/aws.json", "r");
@@ -473,16 +555,10 @@ void setup()
     return;
   }
 
-  Serial.println("succeed to open file for reading..");
-
-  // 파일 내용을 Serial.println을 사용하여 터미널에 출력
-  // while (file.available())
-  // {
-  //   String line = file.readStringUntil('\n');
-  //   Serial.println(line);
-  // }
+  Serial.println("\nsucceed to open file for reading..");
 
   delay(1000);
+
   DynamicJsonDocument cert(4000);
   auto deserializeError = deserializeJson(cert, file);
 
@@ -498,17 +574,19 @@ void setup()
   {
     //2024-06-03 : 최초는 여기로 온다. 에러를 일부러 발생한다. 
     Serial.println("deserializeError true");
-    if(init_count == 0) {
+    // int count = GetIniInt("cert_count", "count", 10);
+    // if(init_count == 0) {
       Serial.println("start createCertificate....");
       createCertificate();
-      init_count++;
-      preferences.putInt("init_count", init_count);
-    }
-    else{  
-          Serial.print("init_count > 0 ");
-          Serial.println(init_count);
+      // init_count++;
+      // preferences.putInt("init_count", init_count);
+      // SetIniInt("cert_count", "count", 1);
+    // }
+    // else{  
+    //       Serial.print("init_count > 0 ");
+    //       Serial.println(init_count);
           
-    }
+    // }
     
   }
   file.close();
@@ -520,7 +598,6 @@ void loop()
   
   if (!client.connected()) {
     Serial.println("\n\n>>>>>>>>>>client connected error occurs..Restart.<<<<<<<<<<<<<\n\n");
-    // reconnect();
     ESP.restart();
     return;
   }
@@ -531,20 +608,51 @@ void loop()
   if (Serial.available()) {
     String command = Serial.readStringUntil('\n');
     command.trim();  // 공백 제거
-    if (command.equals("RESET_INIT_COUNT_0")) {
-      init_count = 0;
-      preferences.putInt("init_count", init_count);
-      Serial.println("init_count has been reset to 0");
+
+    // 2024-06-09 : 증명서를 다시 발행하는 명령, 증명서가 한번 세팅이 되면 다시는 할 필요가 없다. 
+    if (command.equals("reset_cert")) {
+    
+      initializeAwsJson();
+
+      Serial.println("reset certification");
     }
-    else if (command.equals("RESET_INIT_COUNT_1")) {
-      init_count = 1;
-      preferences.putInt("init_count", init_count);
-      Serial.println("init_count has been reset to 1");
+
+    // 2024-06-09 : stm 보드에서 추가 구현, softAP reset이 오면 이렇게 처리를 하면 된다. 추가 구현
+    else if(command.equals("reset softap")){
+        Serial.println("\n\n reset softAp  \n\n");
+        
+        SetIniString("softap", "ssid", "none");
+
+        ESP.restart();
+        
     }
-    else if (command.equals("MQTT_DISCONNECT")){
+    
+    //2024-06-09 : mac address를 얻어낸다. 
+    else if(command.equals("mac_address")){
+        String macAddress = WiFi.macAddress();
+        char macAdd[100];
+        macAddress.toCharArray(macAdd, 100);
+        Serial.printf("\n\nmac address : %s \n\n", macAdd);
+    }
+
+    else if (command.equals("disconnect_mqtt")){
       Serial.println("mqtt disconnect test.. ");
       client.disconnect();
       delay(2000);
+    }
+    
+    
+    else if(command.equals("set softap")){
+        Serial.println("\n\n set softAp  \n\n");
+        SetIniString("softap", "ssid", "operate");
+        
+    }
+    else if(command.equals("get softap")){
+
+      // String getId = GetIni("softap", "ssid", "none");
+      Serial.println("get softap : ");
+      Serial.println(GetIniString("softap", "ssid", "none"));
+
     }
     else{
       Serial.println("Serial input command error!!!!!!!!");

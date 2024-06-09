@@ -113,15 +113,15 @@ void send_check_system_info() {
 
 void send_start_ozs(int action, int duration, int wind_speed) {
 
-   Serial.println("send start cmd :");
-    Serial.printf("action = %d\n", action);
-    Serial.printf("time = %d\n", duration);
-    Serial.printf("wind = %d\n", wind_speed);
+//    Serial.println("send start cmd :");
+//     Serial.printf("action = %d\n", action);
+//     Serial.printf("time = %d\n", duration);
+//     Serial.printf("wind = %d\n", wind_speed);
 
     // Create a JSON document
     StaticJsonDocument<200> doc;
     doc["action"] = action;
-    doc["duration"] = duration * 30;
+    doc["duration"] = (duration == 5) ? 1 : duration * 30;
     doc["wind_speed"] = wind_speed;
 
     // Serialize JSON to string
@@ -164,12 +164,12 @@ void on_message_received(String &topic, DynamicJsonDocument doc, int length) {
             int time = startObj["time"];
             int wind = startObj["wind"];
 #ifdef DEBUG
-            Serial.print("Action: ");
-            Serial.println(action);
-            Serial.print("Time: ");
-            Serial.println(time);
-            Serial.print("Wind: ");
-            Serial.println(wind);
+            // Serial.print("Action: ");
+            // Serial.println(action);
+            // Serial.print("Time: ");
+            // Serial.println(time);
+            // Serial.print("Wind: ");
+            // Serial.println(wind);
 #endif
             // Now you can use the extracted values as needed
             send_start_ozs(action, time, wind);
