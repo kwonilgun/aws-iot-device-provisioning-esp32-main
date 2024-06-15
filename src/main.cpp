@@ -309,6 +309,8 @@ void publish_ozs_system_info(String &message){
 
   doc["info"] = info;
   doc["serial"] = clientId;
+  // 2024-06-10 : esp32 software version
+  doc["esp"] = GetIniString("software", "version", "0");
   
   // Data 합성
   char publishData[512];
@@ -425,41 +427,39 @@ void reconnect() {
   }
 }
 
-
-const char* custom_html = R"(
-<!DOCTYPE html>
-<html>
-<head>
-    <title>오존 살균기 와이파이 매니저</title>
-    <style>
-        /* 사용자 정의 CSS 스타일 */
-    </style>
-</head>
-<body>
-    <h1>오존 살균기 와이파이 설정</h1>
-    <form action="/wifisave" method="post">
-        <label for="ssid">SSID 번호:</label>
-        <input type="text" id="ssid" name="s">
-        <br>
-        <label for="password">패스워드:</label>
-        <input type="text" id="password" name="p">
-        <br>
-        <input type="submit" value="저장">
-    </form>
-</body>
-</html>
-)";
+// const char* custom_html = R"(
+// <!DOCTYPE html>
+// <html>
+// <head>
+//     <title>오존 살균기 와이파이 매니저</title>
+//     <style>
+//         /* 사용자 정의 CSS 스타일 */
+//     </style>
+// </head>
+// <body>
+//     <h1>오존 살균기 와이파이 설정</h1>
+//     <form action="/wifisave" method="post">
+//         <label for="ssid">SSID 번호:</label>
+//         <input type="text" id="ssid" name="s">
+//         <br>
+//         <label for="password">패스워드:</label>
+//         <input type="text" id="password" name="p">
+//         <br>
+//         <input type="submit" value="저장">
+//     </form>
+// </body>
 
 
-void initWifiManager() {
+void initWifiManager(String ssid) {
     //WiFiManager, Local intialization. Once its business is done, there is no need to keep it around
     WiFiManager wm;
 
     
     // wm.setCustomHeadElement(custom_html);
 
-     // 설정 포털 Timeout 설정 (예: 60초 후 자동으로 닫힘)
-    wm.setConfigPortalTimeout(60);
+    // 설정 포털 Timeout 설정 (예: 60초 후 자동으로 닫힘)
+    //  5분마다 자동으로 다시 AP모드로 세팅이 된다. 
+    wm.setConfigPortalTimeout(60 * 5 );
 
     
 
@@ -469,7 +469,46 @@ void initWifiManager() {
 
     // reset settings - wipe stored credentials for testing
     // these are stored by the esp library
-    wm.resetSettings();
+    if(ssid == "none") {
+        Serial.println("\n ssid none wakeup soft ap");
+        wm.resetSettings();
+
+        bool res;
+        // res = wm.autoConnect(); // auto generated AP name from chipid
+        res = wm.autoConnect("루트원 AI-AP"); // anonymous ap
+        // res = wm.autoConnect("AutoConnectAP","password"); // password protected ap
+
+        if(!res) {
+            Serial.println("ssid none , Failed to connect");
+            ESP.restart();
+        } 
+        else {
+            //if you get here you have connected to the WiFi   
+            // send_prepare_voice_stm(); 
+            Serial.println("ssid none , connected...yeey :)");
+
+            SetIniString("softap", "ssid", "operate");
+        }
+    }
+    else{
+      Serial.println("\n ssid operate skip resetSettings");
+
+       bool res;
+
+      res = wm.autoConnect("루트원 AI-AP"); // anonymous ap
+        // res = wm.autoConnect("AutoConnectAP","password"); // password protected ap
+
+      if(!res) {
+          Serial.println("ssid operate: Failed to connect");
+          ESP.restart();
+      } 
+      else {
+          //if you get here you have connected to the WiFi   
+          // send_prepare_voice_stm(); 
+          Serial.println("ssid operate: connected...yeey :)");
+      }
+
+    }
 
     
 
@@ -478,19 +517,7 @@ void initWifiManager() {
     // if empty will auto generate SSID, if password is blank it will be anonymous AP (wm.autoConnect())
     // then goes into a blocking loop awaiting configuration and will return success result
 
-    bool res;
-    // res = wm.autoConnect(); // auto generated AP name from chipid
-    res = wm.autoConnect("루트원 AI-AP"); // anonymous ap
-    // res = wm.autoConnect("AutoConnectAP","password"); // password protected ap
-
-    if(!res) {
-        Serial.println("Failed to connect");
-        // ESP.restart();
-    } 
-    else {
-        //if you get here you have connected to the WiFi    
-        Serial.println("connected...yeey :)");
-    }
+    
 }
 
 void setup()
@@ -519,14 +546,9 @@ void setup()
   WiFiManager wm;
   if (check_ssid == "none") {
     // No stored SSID, start WiFiManager
-    SetIniString("softap", "ssid", "operate");
-    initWifiManager();
-
-    // // Init NVS.
-    //   preferences.begin("my-app", false);
-    //   init_count = preferences.getInt("init_count", 0);
-    //   preferences.end();
-    // SetIniInt("cert_count", "count", 0);
+    send_setup_voice_stm();     //음성으로 softAp 시작을 알려준다. 
+    
+    initWifiManager("none");
 
   } else {
     // Try to connect using stored credentials
@@ -538,9 +560,9 @@ void setup()
     }
     if (WiFi.status() != WL_CONNECTED) {
       // Connection failed, reset stored credentials and start WiFiManager
-      Serial.println("Connection failed, starting WiFiManager...");
-      wm.resetSettings();
-      initWifiManager();
+      Serial.println("\nConnection failed, starting WiFiManager...");
+      // wm.resetSettings();
+      initWifiManager("operate");
     } else {
       Serial.println("Connected.");
     }
@@ -615,8 +637,24 @@ void loop()
     String command = Serial.readStringUntil('\n');
     command.trim();  // 공백 제거
 
+
+    // Check if the command starts with "write serial#"
+    if (command.startsWith("write version:")) {
+      // ":" delimiter로 message를 분리
+      int delimiterIndex = command.indexOf(':');
+      String version = command.substring(delimiterIndex + 1);
+      version.trim();
+      Serial.printf("\nwrite version %s to flash\n", version.c_str());
+      SetIniString("software", "version", version);
+    }
+    else if(command.equals("read version")){
+      // Serial.println("read software version : ");
+      // Serial.println(GetIniString("software", "version", "0"));
+      Serial.printf("\nread version %s from flash", GetIniString("software", "version", "0").c_str());
+    }
+
     // 2024-06-09 : 증명서를 다시 발행하는 명령, 증명서가 한번 세팅이 되면 다시는 할 필요가 없다. 
-    if (command.equals("reset_cert")) {
+    else if (command.equals("reset_cert")) {
     
       initializeAwsJson();
 

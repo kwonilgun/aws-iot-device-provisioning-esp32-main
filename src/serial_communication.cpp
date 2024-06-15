@@ -37,6 +37,18 @@ void send_serial_data(const char *data) {
     }
 }
 
+// 2024-06-10 : softAp voice 전달
+void send_setup_voice_stm(){
+    Serial.println("send Setup voice to stm32f04");
+
+    send_serial_data("{setup:voice}");
+}
+void send_prepare_voice_stm(){
+    Serial.println("send Prepare voice to stm32f04");
+
+    send_serial_data("{prepare:voice}");
+}
+
 // wifi ready send
 void send_wifi_ready() {
     Serial.println("send wifi ready to ozs");

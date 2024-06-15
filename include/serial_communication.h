@@ -15,5 +15,7 @@ void send_start_ozs(int action, int duration, int wind_speed);
 void on_message_received(String &topic, DynamicJsonDocument doc, int length);
 
 void send_wifi_ready();
+void send_setup_voice_stm();
+void send_prepare_voice_stm();
 
 #endif // SERIAL_COMMUNICATION_H
