@@ -28,7 +28,12 @@
 //2024-06-08 :  wifi manager 추가
 #include <WiFiManager.h> // https://github.com/tzapu/WiFiManager
 
+
+
 #define DEBUG
+
+#include <WebServer.h>
+WebServer server(80);
 
 // EPS32 serial port  참조 사이트 : https://circuits4you.com/2018/12/31/esp32-hardware-serial2-example/
 /*
@@ -520,6 +525,13 @@ void initWifiManager(String ssid) {
     
 }
 
+void handleMacAddress() {
+  Serial.println("handleMacAddress enter....");
+  String mac = WiFi.macAddress();
+  server.send(200, "text/plain", mac);
+}
+
+
 void setup()
 {
   Serial.begin(115200);
@@ -569,55 +581,59 @@ void setup()
   }
   Serial.println("Connected.");
 
-  wm.setDebugOutput(true);
-  // int count = GetIniInt("cert_count", "count", 10);
+  server.on("/get_mac", handleGetMac); // /get_mac 요청 처리
+  server.begin(); // 서버 시작
+
+
+  // wm.setDebugOutput(true);
+  // // int count = GetIniInt("cert_count", "count", 10);
   
-  // Serial.printf("\ninit_count before initialization: : %d", count);
-  // Serial.println(init_count);
+  // // Serial.printf("\ninit_count before initialization: : %d", count);
+  // // Serial.println(init_count);
 
-  // Read AWS config file.
-  File file = SPIFFS.open("/aws.json", "r");
-  if (!file)
-  {
-    Serial.println("Failed to open file for reading");
-    return;
-  }
+  // // Read AWS config file.
+  // File file = SPIFFS.open("/aws.json", "r");
+  // if (!file)
+  // {
+  //   Serial.println("Failed to open file for reading");
+  //   return;
+  // }
 
-  Serial.println("\nsucceed to open file for reading..");
+  // Serial.println("\nsucceed to open file for reading..");
 
-  delay(1000);
+  // delay(1000);
 
-  DynamicJsonDocument cert(4000);
-  auto deserializeError = deserializeJson(cert, file);
+  // DynamicJsonDocument cert(4000);
+  // auto deserializeError = deserializeJson(cert, file);
 
-  if (!deserializeError)
-  {
-      Serial.println("deserializeError false");
-      if (cert["certificatePem"])
-      {
-        connectToAWS(cert);
-      }
-  }
-  else 
-  {
-    //2024-06-03 : 최초는 여기로 온다. 에러를 일부러 발생한다. 
-    Serial.println("deserializeError true");
-    // int count = GetIniInt("cert_count", "count", 10);
-    // if(init_count == 0) {
-      Serial.println("start createCertificate....");
-      createCertificate();
-      // init_count++;
-      // preferences.putInt("init_count", init_count);
-      // SetIniInt("cert_count", "count", 1);
-    // }
-    // else{  
-    //       Serial.print("init_count > 0 ");
-    //       Serial.println(init_count);
+  // if (!deserializeError)
+  // {
+  //     Serial.println("deserializeError false");
+  //     if (cert["certificatePem"])
+  //     {
+  //       connectToAWS(cert);
+  //     }
+  // }
+  // else 
+  // {
+  //   //2024-06-03 : 최초는 여기로 온다. 에러를 일부러 발생한다. 
+  //   Serial.println("deserializeError true");
+  //   // int count = GetIniInt("cert_count", "count", 10);
+  //   // if(init_count == 0) {
+  //     Serial.println("start createCertificate....");
+  //     createCertificate();
+  //     // init_count++;
+  //     // preferences.putInt("init_count", init_count);
+  //     // SetIniInt("cert_count", "count", 1);
+  //   // }
+  //   // else{  
+  //   //       Serial.print("init_count > 0 ");
+  //   //       Serial.println(init_count);
           
-    // }
+  //   // }
     
-  }
-  file.close();
+  // }
+  // file.close();
 }
 
 void loop()
@@ -630,6 +646,8 @@ void loop()
     return;
   }
   client.loop();
+
+  server.handleClient(); // 클라이언트 요청 처리
 
 
   // 2024-06-04 computer terminal로 들어온 Serial 명령 처리
