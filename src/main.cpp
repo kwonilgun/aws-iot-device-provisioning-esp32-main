@@ -8,10 +8,15 @@
  * Modified By: Kwonilgun(권일근) (kwonilgun@naver.com>)
  * -----
  * Copyright <<projectCreationYear>> - 2024 루트원 AI, 루트원 AI
+ * 
+ * 2024-06-16 : esp32 async wifi setting 추가
  */
 
 
 // 참조 사이트 : https://github.com/toygame/aws-iot-device-provisioning-esp32/blob/main/src/main.cpp
+// 참조 사이트 : ESP32: Create a Wi-Fi Manager (AsyncWebServer library)
+//            https://randomnerdtutorials.com/esp32-wi-fi-manager-asyncwebserver/
+
 
 #include <Arduino.h>
 #include <SPIFFS.h>
@@ -24,16 +29,26 @@
 #include "serial_communication.h"
 #include "main.h"
 #include "util.h"
+#include "async.h"
+
+#include "async.h"
+
+//2024-06-16 : Async WebServer 추가
+#include <ESPAsyncWebServer.h>
+#include <AsyncTCP.h>
+#include <ArduinoJson.h>
+
+// Create AsyncWebServer object on port 80
+AsyncWebServer server(80);
 
 //2024-06-08 :  wifi manager 추가
-#include <WiFiManager.h> // https://github.com/tzapu/WiFiManager
+// #include <WiFiManager.h> // https://github.com/tzapu/WiFiManager
 
 
 
 #define DEBUG
 
-#include <WebServer.h>
-WebServer server(80);
+
 
 // EPS32 serial port  참조 사이트 : https://circuits4you.com/2018/12/31/esp32-hardware-serial2-example/
 /*
@@ -64,6 +79,38 @@ String receivedString = ""; // 수신된 문자열을 저장할 변수
 bool insideBrackets = false; // '['와 ']' 사이의 문자열인지 여부를 나타내는 플래그
 
 
+
+//2024-06-16 : Async server parameters......
+// Search for parameter in HTTP POST request
+const char* PARAM_INPUT_1 = "ssid";
+const char* PARAM_INPUT_2 = "pass";
+const char* PARAM_INPUT_3 = "ip";
+const char* PARAM_INPUT_4 = "gateway";
+
+//Variables to save values from HTML form
+String ssid;
+String pass;
+String ip;
+String gateway;
+// File paths to save input values permanently
+const char* ssidPath = "/ssid.txt";
+const char* passPath = "/pass.txt";
+const char* ipPath = "/ip.txt";
+const char* gatewayPath = "/gateway.txt";
+
+IPAddress localIP;
+//IPAddress localIP(192, 168, 1, 200); // hardcoded
+
+// Set your Gateway IP address
+IPAddress localGateway;
+//IPAddress localGateway(192, 168, 1, 1); //hardcoded
+IPAddress subnet(255, 255, 0, 0);
+
+// Timer variables
+unsigned long previousMillis = 0;
+const long interval = 10000;  // interval to wait for Wi-Fi connection (milliseconds)
+
+String loop_start = "NO_OP"; 
 
 
 void initializeAwsJson()
@@ -368,8 +415,8 @@ void createCertificate()
   client.setBufferSize(4000);
   Serial.println("Connecting to AWS IOT.");
   String clientId = "ESP32_" + WiFi.macAddress(); // 고유한 클라이언트 ID 생성
-  Serial.println("clientId ");
-  Serial.println(clientId);
+  Serial.printf("clientId =  %s \n ", clientId);
+  // Serial.println(clientId);
   while (!client.connect(clientId.c_str())) {
     Serial.print(".");
     delay(1000);
@@ -432,29 +479,7 @@ void reconnect() {
   }
 }
 
-// const char* custom_html = R"(
-// <!DOCTYPE html>
-// <html>
-// <head>
-//     <title>오존 살균기 와이파이 매니저</title>
-//     <style>
-//         /* 사용자 정의 CSS 스타일 */
-//     </style>
-// </head>
-// <body>
-//     <h1>오존 살균기 와이파이 설정</h1>
-//     <form action="/wifisave" method="post">
-//         <label for="ssid">SSID 번호:</label>
-//         <input type="text" id="ssid" name="s">
-//         <br>
-//         <label for="password">패스워드:</label>
-//         <input type="text" id="password" name="p">
-//         <br>
-//         <input type="submit" value="저장">
-//     </form>
-// </body>
-
-
+/********** 2024-06-16:  Wifi manager 블럭
 void initWifiManager(String ssid) {
     //WiFiManager, Local intialization. Once its business is done, there is no need to keep it around
     WiFiManager wm;
@@ -525,10 +550,138 @@ void initWifiManager(String ssid) {
     
 }
 
-void handleMacAddress() {
-  Serial.println("handleMacAddress enter....");
-  String mac = WiFi.macAddress();
-  server.send(200, "text/plain", mac);
+***************/
+
+// Initialize WiFi
+bool initWiFi(String cont) {
+  // if(ssid=="" || ip==""){
+  if((ssid=="") || (cont == "init_ap")){
+    Serial.println("Undefined SSID or IP address.");
+    return false;
+  }
+
+  WiFi.mode(WIFI_STA);
+  localIP.fromString(ip.c_str());
+  localGateway.fromString(gateway.c_str());
+
+
+  if (!WiFi.config(localIP, localGateway, subnet)){
+    Serial.println("STA Failed to configure");
+    return false;
+  }
+
+  // 2024-06-16 : ssid, password setting 
+  WiFi.begin(ssid.c_str(), pass.c_str());
+  // WiFi.begin(ssid.c_str(), );
+  Serial.println("Connecting to WiFi...");
+
+  unsigned long currentMillis = millis();
+  previousMillis = currentMillis;
+
+  while(WiFi.status() != WL_CONNECTED) {
+    currentMillis = millis();
+    if (currentMillis - previousMillis >= interval) {
+      Serial.println("Failed to connect.");
+      return false;
+    }
+  }
+
+  Serial.println("WiFi succeed to connect");
+  Serial.println(WiFi.localIP());
+  
+  return true;
+}
+
+
+void gotoSoftApSetup() {
+        // Connect to Wi-Fi network with SSID and password
+    Serial.println("Setting AP (Access Point)");
+    // NULL sets an open Access Point
+    WiFi.softAP("ROOTONE-AI-AP", NULL);
+
+    IPAddress IP = WiFi.softAPIP();
+    Serial.print("AP IP address: ");
+    Serial.println(IP); 
+
+    // Web Server Root URL
+    server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
+      Serial.println("http_get run....");
+
+      request->send(200, "text/plain", "Wifi manager connection success");
+
+      // request->send(SPIFFS, "/wifimanager.html", "text/html");
+    });
+
+    server.on("/mac", HTTP_GET, [](AsyncWebServerRequest *request){
+      Serial.println("http_get run....");
+      String mac = WiFi.macAddress();
+      request->send(200, "text/plain", mac);
+      
+    });
+    
+    server.serveStatic("/", SPIFFS, "/");
+    
+    server.on("/", HTTP_POST, [](AsyncWebServerRequest *request) {
+
+      Serial.println("http post rx");
+
+      int params = request->params();
+      
+      Serial.printf("http post rx params = %d \n", params);
+
+      for(int i=0;i<params;i++){
+        AsyncWebParameter* p = request->getParam(i);
+         // 삼항 연산자를 사용하여 bool 값을 "true" 또는 "false" 문자열로 변환
+        Serial.printf("The value of myBool is: %s\n", p->isPost() ? "true" : "false");
+
+        Serial.printf(" p-> name = %s \n", p->name());
+
+        if(p->isPost()){
+          // HTTP POST ssid value
+          if (p->name() == PARAM_INPUT_1) {
+            ssid = p->value().c_str();
+            Serial.print("SSID set to: ");
+            Serial.println(ssid);
+            // Write file to save value
+            writeFile(SPIFFS, ssidPath, ssid.c_str());
+          }
+          // HTTP POST pass value
+          if (p->name() == PARAM_INPUT_2) {
+            pass = p->value().c_str();
+            Serial.print("Password set to: ");
+            Serial.println(pass);
+            // Write file to save value
+            writeFile(SPIFFS, passPath, pass.c_str());
+          }
+          // HTTP POST ip value
+          if (p->name() == PARAM_INPUT_3) {
+            ip = p->value().c_str();
+            Serial.print("IP Address set to: ");
+            Serial.println(ip);
+            // Write file to save value
+            writeFile(SPIFFS, ipPath, ip.c_str());
+          }
+          // HTTP POST gateway value
+          if (p->name() == PARAM_INPUT_4) {
+            gateway = p->value().c_str();
+            Serial.print("Gateway set to: ");
+            Serial.println(gateway);
+            // Write file to save value
+            writeFile(SPIFFS, gatewayPath, gateway.c_str());
+          }
+          //Serial.printf("POST[%s]: %s\n", p->name().c_str(), p->value().c_str());
+        }
+      }
+      request->send(200, "text/plain", "Done. ESP will restart, connect to your router and go to IP address: " + ip);
+      
+      
+      delay(3000);
+
+      SetIniString("softap", "ssid", "operate");
+
+      ESP.restart();
+    });
+    server.begin();
 }
 
 
@@ -540,186 +693,200 @@ void setup()
  
   Serial2.begin(115200, SERIAL_8N1, RXD2, TXD2);
 
-  // Init SPIFFS.
-  if (!SPIFFS.begin(true))
-  {
-    Serial.println("An Error has occurred while mounting SPIFFS");
-    return;
-  }
+  initSPIFFS();
 
-  WiFi.mode(WIFI_STA);
-  // WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-  Serial.print("Connecting to WiFi..");
+  Serial.println("start setup..");
 
-  String check_ssid =  GetIniString("softap", "ssid", "none");
+  String check_ssid =  GetIniString("softap", "ssid", "init_ap");
   Serial.println(check_ssid);
 
+   // Load values saved in SPIFFS
+  ssid = readFile(SPIFFS, ssidPath);
+  pass = readFile(SPIFFS, passPath);
+  ip = readFile(SPIFFS, ipPath);
+  gateway = readFile (SPIFFS, gatewayPath);
+  Serial.println(ssid);
+  Serial.println(pass);
+  Serial.println(ip);
+  Serial.println(gateway);
+
   // Attempt to connect to WiFi
-  WiFiManager wm;
-  if (check_ssid == "none") {
+  // WiFiManager wm;
+  if (check_ssid == "init_ap") {
     // No stored SSID, start WiFiManager
+    Serial.println("check_ssid is init_ap ....");
     send_setup_voice_stm();     //음성으로 softAp 시작을 알려준다. 
-    
-    initWifiManager("none");
+    gotoSoftApSetup();
 
-  } else {
-    // Try to connect using stored credentials
-    WiFi.begin();
-    unsigned long startAttemptTime = millis();
-    while (WiFi.status() != WL_CONNECTED && millis() - startAttemptTime < 10000) {
-      delay(500);
-      Serial.print(".");
-    }
-    if (WiFi.status() != WL_CONNECTED) {
-      // Connection failed, reset stored credentials and start WiFiManager
-      Serial.println("\nConnection failed, starting WiFiManager...");
-      // wm.resetSettings();
-      initWifiManager("operate");
-    } else {
-      Serial.println("Connected.");
-    }
+  } 
+  else if(ssid == ""){
+    Serial.println(" ssid is empty  ....");
+
+    gotoSoftApSetup();
   }
-  Serial.println("Connected.");
-
-  server.on("/get_mac", handleGetMac); // /get_mac 요청 처리
-  server.begin(); // 서버 시작
-
-
-  // wm.setDebugOutput(true);
-  // // int count = GetIniInt("cert_count", "count", 10);
   
-  // // Serial.printf("\ninit_count before initialization: : %d", count);
-  // // Serial.println(init_count);
+  else {
 
-  // // Read AWS config file.
-  // File file = SPIFFS.open("/aws.json", "r");
-  // if (!file)
-  // {
-  //   Serial.println("Failed to open file for reading");
-  //   return;
-  // }
-
-  // Serial.println("\nsucceed to open file for reading..");
-
-  // delay(1000);
-
-  // DynamicJsonDocument cert(4000);
-  // auto deserializeError = deserializeJson(cert, file);
-
-  // if (!deserializeError)
-  // {
-  //     Serial.println("deserializeError false");
-  //     if (cert["certificatePem"])
-  //     {
-  //       connectToAWS(cert);
-  //     }
-  // }
-  // else 
-  // {
-  //   //2024-06-03 : 최초는 여기로 온다. 에러를 일부러 발생한다. 
-  //   Serial.println("deserializeError true");
-  //   // int count = GetIniInt("cert_count", "count", 10);
-  //   // if(init_count == 0) {
-  //     Serial.println("start createCertificate....");
-  //     createCertificate();
-  //     // init_count++;
-  //     // preferences.putInt("init_count", init_count);
-  //     // SetIniInt("cert_count", "count", 1);
-  //   // }
-  //   // else{  
-  //   //       Serial.print("init_count > 0 ");
-  //   //       Serial.println(init_count);
-          
-  //   // }
+    if(initWiFi("operate")){
+          // Route for root / web page
+        Serial.println("initWiFi OK");
+        loop_start = "YES_OP";
+        
+        // server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
+        //   Serial.println("received http /");
+        //   request->send(SPIFFS, "/index.html", "rx soft Ap");
+        // });
+        // // server.serveStatic("/", SPIFFS, "/");
     
-  // }
-  // file.close();
+        // server.on("/mac", HTTP_GET, [](AsyncWebServerRequest *request){
+        //   Serial.println("received http /cmd  ....");
+        //   String mac = WiFi.macAddress();
+        //   request->send(200, "text/plain", mac);
+          
+        // });
+        // server.begin();
+
+/****** 임시로 막음*/
+        Serial.println("Connected.");
+
+        // Read AWS config file.
+        File file = SPIFFS.open("/aws.json", "r");
+        if (!file)
+        {
+          Serial.println("Failed to open file for reading");
+          return;
+        }
+
+        Serial.println("\nsucceed to open file for reading..");
+
+        delay(1000);
+
+        DynamicJsonDocument cert(4000);
+        auto deserializeError = deserializeJson(cert, file);
+
+        if (!deserializeError)
+        {
+            Serial.println("deserializeError false");
+            if (cert["certificatePem"])
+            {
+              connectToAWS(cert);
+
+             
+            }
+        }
+        else 
+        {
+          //2024-06-03 : 최초는 여기로 온다. 에러를 일부러 발생한다. 
+          // Serial.println("deserializeError true");
+         
+            Serial.println("start createCertificate....");
+            createCertificate();
+            
+          
+        }
+        file.close();
+
+  /*****/
+
+
+      }
+      else{
+          Serial.println(" connection fail and restart ESP!!!!!!");
+      }
+  }
 }
 
 void loop()
 {
 
+
+  if(loop_start == "YES_OP"){
+
+        if (!client.connected()) {
+            Serial.println("\n\n>>>>>>>>>>client connected error occurs..Restart.<<<<<<<<<<<<<\n\n");
+            ESP.restart();
+            return;
+        }
+        client.loop();
+
+        // server.handleClient(); // 클라이언트 요청 처리
+
+
+        // 2024-06-04 computer terminal로 들어온 Serial 명령 처리
+        if (Serial.available()) {
+          String command = Serial.readStringUntil('\n');
+          command.trim();  // 공백 제거
+
+
+          // Check if the command starts with "write serial#"
+          if (command.startsWith("write version:")) {
+            // ":" delimiter로 message를 분리
+            int delimiterIndex = command.indexOf(':');
+            String version = command.substring(delimiterIndex + 1);
+            version.trim();
+            Serial.printf("\nwrite version %s to flash\n", version.c_str());
+            SetIniString("software", "version", version);
+          }
+          else if(command.equals("read version")){
+            // Serial.println("read software version : ");
+            // Serial.println(GetIniString("software", "version", "0"));
+            Serial.printf("\nread version %s from flash", GetIniString("software", "version", "0").c_str());
+          }
+
+          // 2024-06-09 : 증명서를 다시 발행하는 명령, 증명서가 한번 세팅이 되면 다시는 할 필요가 없다. 
+          else if (command.equals("reset_cert")) {
+          
+            initializeAwsJson();
+
+            Serial.println("reset certification");
+          }
+
+          // 2024-06-09 : stm 보드에서 추가 구현, softAP reset이 오면 이렇게 처리를 하면 된다. 추가 구현
+          else if(command.equals("reset softap")){
+              Serial.println("\n\n reset softAp  \n\n");
+              
+              SetIniString("softap", "ssid", "init_ap");
+
+              ESP.restart();
+              
+          }
+          
+          //2024-06-09 : mac address를 얻어낸다. 
+          else if(command.equals("mac_address")){
+              String macAddress = WiFi.macAddress();
+              char macAdd[100];
+              macAddress.toCharArray(macAdd, 100);
+              Serial.printf("\n\nmac address : %s \n\n", macAdd);
+          }
+
+          else if (command.equals("disconnect_mqtt")){
+            Serial.println("mqtt disconnect test.. ");
+            client.disconnect();
+            delay(2000);
+          }
+          
+          
+          else if(command.equals("set softap")){
+              Serial.println("\n\n set softAp  \n\n");
+              SetIniString("softap", "ssid", "operate");
+              
+          }
+          else if(command.equals("get softap")){
+
+            // String getId = GetIni("softap", "ssid", "none");
+            Serial.println("get softap : ");
+            Serial.println(GetIniString("softap", "ssid", "none"));
+
+          }
+          else{
+            Serial.println("Serial input command error!!!!!!!!");
+          }
+        }
   
-  if (!client.connected()) {
-    Serial.println("\n\n>>>>>>>>>>client connected error occurs..Restart.<<<<<<<<<<<<<\n\n");
-    ESP.restart();
-    return;
+
   }
-  client.loop();
-
-  server.handleClient(); // 클라이언트 요청 처리
-
-
-  // 2024-06-04 computer terminal로 들어온 Serial 명령 처리
-  if (Serial.available()) {
-    String command = Serial.readStringUntil('\n');
-    command.trim();  // 공백 제거
-
-
-    // Check if the command starts with "write serial#"
-    if (command.startsWith("write version:")) {
-      // ":" delimiter로 message를 분리
-      int delimiterIndex = command.indexOf(':');
-      String version = command.substring(delimiterIndex + 1);
-      version.trim();
-      Serial.printf("\nwrite version %s to flash\n", version.c_str());
-      SetIniString("software", "version", version);
-    }
-    else if(command.equals("read version")){
-      // Serial.println("read software version : ");
-      // Serial.println(GetIniString("software", "version", "0"));
-      Serial.printf("\nread version %s from flash", GetIniString("software", "version", "0").c_str());
-    }
-
-    // 2024-06-09 : 증명서를 다시 발행하는 명령, 증명서가 한번 세팅이 되면 다시는 할 필요가 없다. 
-    else if (command.equals("reset_cert")) {
-    
-      initializeAwsJson();
-
-      Serial.println("reset certification");
-    }
-
-    // 2024-06-09 : stm 보드에서 추가 구현, softAP reset이 오면 이렇게 처리를 하면 된다. 추가 구현
-    else if(command.equals("reset softap")){
-        Serial.println("\n\n reset softAp  \n\n");
-        
-        SetIniString("softap", "ssid", "none");
-
-        ESP.restart();
-        
-    }
-    
-    //2024-06-09 : mac address를 얻어낸다. 
-    else if(command.equals("mac_address")){
-        String macAddress = WiFi.macAddress();
-        char macAdd[100];
-        macAddress.toCharArray(macAdd, 100);
-        Serial.printf("\n\nmac address : %s \n\n", macAdd);
-    }
-
-    else if (command.equals("disconnect_mqtt")){
-      Serial.println("mqtt disconnect test.. ");
-      client.disconnect();
-      delay(2000);
-    }
-    
-    
-    else if(command.equals("set softap")){
-        Serial.println("\n\n set softAp  \n\n");
-        SetIniString("softap", "ssid", "operate");
-        
-    }
-    else if(command.equals("get softap")){
-
-      // String getId = GetIni("softap", "ssid", "none");
-      Serial.println("get softap : ");
-      Serial.println(GetIniString("softap", "ssid", "none"));
-
-    }
-    else{
-      Serial.println("Serial input command error!!!!!!!!");
-    }
-  }
+  
+  
   
 
 
