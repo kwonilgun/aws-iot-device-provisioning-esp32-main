@@ -6,6 +6,7 @@
 
 #define SERIAL_DELAY 5
 
+extern void publishMessageConnection();
 
 void send_serial_data(const char *data) {
     // Implementation of serial write function
@@ -213,13 +214,21 @@ void on_message_received(String &topic, DynamicJsonDocument doc, int length) {
             Serial.println("Received system info inquiry");
             #endif
             send_check_system_info();
-        } else {
+        } else if (strcmp(statusValue, "connection") == 0) {
+            #ifdef DEBUG
+            Serial.println("Received check connection");
+            #endif
+            // 2024-06-19 : 바로 리턴을 해준다. 
+            publishMessageConnection();
+        } 
+        
+        
+        else {
             Serial.println("Error: unrecognized status value");
         }
         //  publishMessage();
 
     }
-    
     
     else {
         Serial.printf("No 'start' key found in data");

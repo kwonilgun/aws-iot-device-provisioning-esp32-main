@@ -95,9 +95,12 @@ IPAddress subnet(255, 255, 0, 0);
 
 // Timer variables
 unsigned long previousMillis = 0;
-const long interval = 10000;  // interval to wait for Wi-Fi connection (milliseconds)
+const long interval = 5000;  // interval to wait for Wi-Fi connection (milliseconds)
 
 String loop_start = "NO_OP"; 
+
+// 2024-06-18 : wifi 세팅이 제대로 되었는 지 확인하는 status 
+// bool wifiConnectionSuccess = false;
 
 
 void initializeAwsJson()
@@ -383,6 +386,47 @@ void publish_ozs_system_info(String &message){
 
 }
 
+// 2024-06-19 : esp32 연결 체크
+void publishMessageConnection(){
+  
+  Serial.println("publishMessageConnection ....");
+
+  String clientId = "" + WiFi.macAddress();
+  
+  StaticJsonDocument<200> doc;
+
+  doc["connect"] = "success";
+  doc["mac"] = clientId;
+  
+  // Data 합성
+  char publishData[512];
+  serializeJson(doc, publishData); // print to client
+
+  // topic 합성 : ozs/client8266/ + mac 주소
+  String publishTopic = String(AWS_IOT_PUB_TOPIC) + WiFi.macAddress();
+  char pubTopic[100];
+  publishTopic.toCharArray(pubTopic, 100);
+  Serial.printf("publish connection topic: %s \r\n", pubTopic);
+  
+
+  //2024-06-05 : client.publish(pubTopic, publishBuffer, 0), the third parameter 0 specifies that the message should be delivered with QoS 0 (at most once).
+  if (client.publish(pubTopic, publishData))
+  {
+    Serial.printf("Publish to topic %s successful\n", pubTopic);
+  }
+  else
+  {
+    Serial.printf("Publish to topic %s failed\n", pubTopic);
+  }
+
+  // end_time = millis();
+
+  // unsigned long elapsedTime = end_time - start_time;
+  // Serial.print("\nMessage handling and publishing took: ");
+  // Serial.print(elapsedTime);
+  // Serial.println("ms");
+}
+
 void createCertificate()
 {
   Serial.println("No file content.");
@@ -467,78 +511,6 @@ void reconnect() {
 }
 
 
-
-
-void initWifiManager(String ssid) {
-    //WiFiManager, Local intialization. Once its business is done, there is no need to keep it around
-    WiFiManager wm;
-
-    
-    // wm.setCustomHeadElement(custom_html);
-
-    // 설정 포털 Timeout 설정 (예: 60초 후 자동으로 닫힘)
-    //  5분마다 자동으로 다시 AP모드로 세팅이 된다. 
-    wm.setConfigPortalTimeout(60 * 5 );
-
-    
-
-    //2024-06-09 :  Remove all buttons except the wifi config and exit
-    std::vector<const char *> wm_menu  = {"wifi", "exit"};
-    wm.setMenu(wm_menu);
-
-    // reset settings - wipe stored credentials for testing
-    // these are stored by the esp library
-    if(ssid == "none") {
-        Serial.println("\n ssid none wakeup soft ap");
-        wm.resetSettings();
-
-        bool res;
-        // res = wm.autoConnect(); // auto generated AP name from chipid
-        res = wm.autoConnect("루트원 AI-AP"); // anonymous ap
-        // res = wm.autoConnect("AutoConnectAP","password"); // password protected ap
-
-        if(!res) {
-            Serial.println("ssid none , Failed to connect");
-            ESP.restart();
-        } 
-        else {
-            //if you get here you have connected to the WiFi   
-            // send_prepare_voice_stm(); 
-            Serial.println("ssid none , connected...yeey :)");
-
-            SetIniString("softap", "ssid", "operate");
-        }
-    }
-    else{
-      Serial.println("\n ssid operate skip resetSettings");
-
-       bool res;
-
-      res = wm.autoConnect("루트원 AI-AP"); // anonymous ap
-        // res = wm.autoConnect("AutoConnectAP","password"); // password protected ap
-
-      if(!res) {
-          Serial.println("ssid operate: Failed to connect");
-          ESP.restart();
-      } 
-      else {
-          //if you get here you have connected to the WiFi   
-          // send_prepare_voice_stm(); 
-          Serial.println("ssid operate: connected...yeey :)");
-      }
-
-    }
-
-    
-
-    // Automatically connect using saved credentials,
-    // if connection fails, it starts an access point with the specified name ( "AutoConnectAP"),
-    // if empty will auto generate SSID, if password is blank it will be anonymous AP (wm.autoConnect())
-    // then goes into a blocking loop awaiting configuration and will return success result
-
-    
-}
-
 // Initialize WiFi
 bool initWiFi(String cont) {
   // if(ssid=="" || ip==""){
@@ -575,16 +547,17 @@ bool initWiFi(String cont) {
 
   Serial.println("WiFi succeed to connect");
   Serial.println(WiFi.localIP());
+
+  //  wifiConnectionSuccess = true; // Set flag to true on success
   
   return true;
 }
-
 
 void gotoSoftApSetup() {
         // Connect to Wi-Fi network with SSID and password
     Serial.println("Setting AP (Access Point)");
     // NULL sets an open Access Point
-    WiFi.softAP("ROOTONE-AI-AP", NULL);
+    WiFi.softAP("ROOTONE-AI-AP", "ROOTONE-AI-PWD");
 
     IPAddress IP = WiFi.softAPIP();
     Serial.print("AP IP address: ");
@@ -592,7 +565,7 @@ void gotoSoftApSetup() {
 
     // Web Server Root URL
     server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
-      Serial.println("http_get run....");
+      Serial.println("http_get /....");
 
       request->send(200, "text/plain", "Wifi manager connection success");
 
@@ -600,11 +573,23 @@ void gotoSoftApSetup() {
     });
 
     server.on("/mac", HTTP_GET, [](AsyncWebServerRequest *request){
-      Serial.println("http_get run....");
+      Serial.println("http_get /mac ....");
       String mac = WiFi.macAddress();
       request->send(200, "text/plain", mac);
       
     });
+
+    // wifi connection이 성공했는지 실패했는 지 확인.
+    server.on("/status", HTTP_GET, [](AsyncWebServerRequest *request) {
+
+      Serial.println("http_get /status rx....");
+      
+    // if (wifiConnectionSuccess) {
+    //   request->send(200, "text/plain", "Connected to WiFi successfully.");
+    // } else {
+    //   request->send(400, "text/plain", "Failed to connect to WiFi. Please check SSID and password.");
+    // }
+  });
     
     server.serveStatic("/", SPIFFS, "/");
     
@@ -662,9 +647,12 @@ void gotoSoftApSetup() {
       request->send(200, "text/plain", "Done. ESP will restart, connect to your router and go to IP address: " + ip);
       
       
-      delay(3000);
+      delay(2000);
 
       SetIniString("softap", "ssid", "operate");
+
+      // wifiConnectionSuccess = false; // Set flag to false on failure
+      // delay(10000); // Add a delay to ensure the HTTP response can be sent before restart, 10초를 기다린다. 
 
       ESP.restart();
     });
@@ -678,13 +666,6 @@ void setup()
   // Note the format for setting a serial port is as follows: Serial2.begin(baud-rate, protocol, RX pin, TX pin);
  
   Serial2.begin(115200, SERIAL_8N1, RXD2, TXD2);
-
-  // // Init SPIFFS.
-  // if (!SPIFFS.begin(true))
-  // {
-  //   Serial.println("An Error has occurred while mounting SPIFFS");
-  //   return;
-  // }
 
   initSPIFFS();
 
@@ -713,139 +694,111 @@ void setup()
   if (check_ssid == "init_ap") {
     // No stored SSID, start WiFiManager
     Serial.println("check_ssid is init_ap ....");
+    loop_start = "NO";
     send_setup_voice_stm();     //음성으로 softAp 시작을 알려준다. 
     gotoSoftApSetup();
 
   } 
   else if(ssid == ""){
     Serial.println(" ssid is empty  ....");
+    loop_start = "NO";
     gotoSoftApSetup();
   }
   else {
     if(initWiFi("operate")){
           // Route for root / web page
-        Serial.println("initWiFi OK");
-        loop_start = "YES_OP";
-        
+              Serial.println("initWiFi OK");
+              loop_start = "YES_OP";
+              
+              Serial.println("Connected.");
 
-/****** 임시로 막음*/
-        Serial.println("Connected.");
+              // Read AWS config file.
+              File file = SPIFFS.open("/aws.json", "r");
+              if (!file)
+              {
+                Serial.println("Failed to open file for reading");
+                return;
+              }
 
-        // Read AWS config file.
-        File file = SPIFFS.open("/aws.json", "r");
-        if (!file)
-        {
-          Serial.println("Failed to open file for reading");
-          return;
-        }
+              Serial.println("\nsucceed to open file for reading..");
 
-        Serial.println("\nsucceed to open file for reading..");
+              // delay(1000);
 
-        delay(1000);
+              DynamicJsonDocument cert(4000);
+              auto deserializeError = deserializeJson(cert, file);
 
-        DynamicJsonDocument cert(4000);
-        auto deserializeError = deserializeJson(cert, file);
+              if (!deserializeError)
+              {
+                  Serial.println("deserializeError false");
+                  if (cert["certificatePem"])
+                  {
+                    connectToAWS(cert);
+                  }
+              }
+              else 
+              {
+                //2024-06-03 : 최초는 여기로 온다. 에러를 일부러 발생한다. 
+                  Serial.println("start createCertificate....");
+                  createCertificate();
+              }
+              file.close();
 
-        if (!deserializeError)
-        {
-            Serial.println("deserializeError false");
-            if (cert["certificatePem"])
-            {
-              connectToAWS(cert);
-            }
-        }
-        else 
-        {
-          //2024-06-03 : 최초는 여기로 온다. 에러를 일부러 발생한다. 
-            Serial.println("start createCertificate....");
-            createCertificate();
-        }
-        file.close();
-  /*****/
       }
       else{
-          Serial.println(" connection fail and restart ESP!!!!!!");
+
+          Serial.println("***********");
+          Serial.println(" !!!!!!!connection fail and restart ESP!!!!!!");
+          Serial.println("***********");
+
+          // 2024-06-18 : 💇‍♀️ !!!!!!! 10초 동안 와이파이를 연결했지만 안됨. 다시 처음 부터 시작으 해야한다. 
+          deleteAllFiles();
+
+          SetIniString("softap", "ssid", "init_ap");
+
+
+          // wifiConnectionSuccess = false; // Set flag to false on failure
+          delay(2000); // Add a delay to ensure the HTTP response can be sent before restart
+
+        
+          ESP.restart();
+      
       }
   }
 
-/***** 블럭
-  if (check_ssid == "none") {
-    // No stored SSID, start WiFiManager
-    send_setup_voice_stm();     //음성으로 softAp 시작을 알려준다. 
-    
-    initWifiManager("none");
-
-  } else {
-    // Try to connect using stored credentials
-    WiFi.begin();
-    unsigned long startAttemptTime = millis();
-    while (WiFi.status() != WL_CONNECTED && millis() - startAttemptTime < 10000) {
-      delay(500);
-      Serial.print(".");
-    }
-    if (WiFi.status() != WL_CONNECTED) {
-      // Connection failed, reset stored credentials and start WiFiManager
-      Serial.println("\nConnection failed, starting WiFiManager...");
-      // wm.resetSettings();
-      initWifiManager("operate");
-    } else {
-      Serial.println("Connected.");
-    }
-  }
-  Serial.println("Connected.");
-
-  wm.setDebugOutput(true);
-  // int count = GetIniInt("cert_count", "count", 10);
-  
-  // Serial.printf("\ninit_count before initialization: : %d", count);
-  // Serial.println(init_count);
-
-  // Read AWS config file.
-  File file = SPIFFS.open("/aws.json", "r");
-  if (!file)
-  {
-    Serial.println("Failed to open file for reading");
-    return;
-  }
-
-  Serial.println("\nsucceed to open file for reading..");
-
-  delay(1000);
-
-  DynamicJsonDocument cert(4000);
-  auto deserializeError = deserializeJson(cert, file);
-
-  if (!deserializeError)
-  {
-      Serial.println("deserializeError false");
-      if (cert["certificatePem"])
-      {
-        connectToAWS(cert);
-      }
-  }
-  else 
-  {
-    //2024-06-03 : 최초는 여기로 온다. 에러를 일부러 발생한다. 
-    Serial.println("deserializeError true");
-    // int count = GetIniInt("cert_count", "count", 10);
-    // if(init_count == 0) {
-      Serial.println("start createCertificate....");
-      createCertificate();
-      // init_count++;
-      // preferences.putInt("init_count", init_count);
-      // SetIniInt("cert_count", "count", 1);
-    // }
-    // else{  
-    //       Serial.print("init_count > 0 ");
-    //       Serial.println(init_count);
-          
-    // }
-    
-  }
-  file.close();
-
-  ****/
 }
+
+void deleteFile(fs::FS &fs, const char * path) {
+  Serial.printf("Deleting file: %s\n", path);
+
+  // 파일 삭제 시도
+  if (fs.remove(path)) {
+    Serial.println("File deleted successfully");
+  } else {
+    Serial.println("Failed to delete file");
+  }
+}
+
+void deleteAllFiles(){
+
+  // // 파일 경로
+  // const char* filePath = "/aws.json";
+
+  // // 파일 삭제 시도
+  // if (SPIFFS.remove(filePath)) {
+  //   Serial.println("AWS JSON file deleted successfully");
+  // } else {
+  //   Serial.println("Failed to delete AWS JSON file");
+  // }
+
+  // 파일 삭제 함수 호출
+  deleteFile(SPIFFS, ssidPath);
+  deleteFile(SPIFFS, passPath);
+  deleteFile(SPIFFS, ipPath);
+  deleteFile(SPIFFS, gatewayPath);
+}
+
+
+
 void loop()
 {
 
@@ -896,6 +849,7 @@ void loop()
               Serial.println("\n\n reset softAp  \n\n");
               
               SetIniString("softap", "ssid", "init_ap");
+              deleteAllFiles();
 
               ESP.restart();
               
