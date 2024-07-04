@@ -212,8 +212,8 @@ void connectToAWS(DynamicJsonDocument cert)
   // 참조 사이트: PubSubClient API : https://pubsubclient.knolleary.net/api#setKeepAlive
 
 
-  //2024-06-05 : 5분에 한번씩 PINGREQ를 보낸다.  
-  client.setKeepAlive(30 * 10);
+  //2024-06-05 : 15분에 한번씩 PINGREQ를 보낸다.  15분에 한번씩 ping을 한다. 
+  client.setKeepAlive(15 * 60);
 
   
   
