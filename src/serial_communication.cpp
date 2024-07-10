@@ -14,7 +14,7 @@ void send_serial_data(const char *data) {
     String newData = "[" + String(data) + "]";
 
 #ifdef DEBUG
-    Serial.printf("send_serial_data data = %s\n", newData.c_str());
+    Serial.printf("send_serial_data = %s\n", newData.c_str());
 #endif
     Serial.println("");
 

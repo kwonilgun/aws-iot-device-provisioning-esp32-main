@@ -51,6 +51,9 @@ AsyncWebServer server(80);
 #define RXD2 16
 #define TXD2 17
 
+// 2024-07-10 : esp32 : software version 
+const char* ESP32_SW_VERSION = "0.0.5";
+
 WiFiClientSecure net;
 PubSubClient client(net);
 
@@ -97,10 +100,18 @@ IPAddress subnet(255, 255, 0, 0);
 unsigned long previousMillis = 0;
 const long interval = 5000;  // interval to wait for Wi-Fi connection (milliseconds)
 
-String loop_start = "NO_OP"; 
+String loop_start = "NO"; 
 
 // 2024-06-18 : wifi 세팅이 제대로 되었는 지 확인하는 status 
 // bool wifiConnectionSuccess = false;
+
+// 2024-07-08 : softAP key 추가
+const int switchPin = 4; // 스위치가 연결된 GPIO 핀
+const unsigned long debounceDelay = 3000; // 3초 지연 시간 (밀리초)
+
+unsigned long switchPressedTime = 0; // 스위치가 눌린 시간
+bool switchState = LOW; // 현재 스위치 상태
+bool lastSwitchState = LOW; // 마지막 스위치 상태
 
 
 void initializeAwsJson()
@@ -663,6 +674,9 @@ void setup()
 {
   Serial.begin(115200);
 
+  // 스위치 핀을 입력 모드로 설정
+  pinMode(switchPin, INPUT);
+
   // Note the format for setting a serial port is as follows: Serial2.begin(baud-rate, protocol, RX pin, TX pin);
  
   Serial2.begin(115200, SERIAL_8N1, RXD2, TXD2);
@@ -688,8 +702,8 @@ void setup()
   Serial.println(ip);
   Serial.println(gateway);
 
-  // Attempt to connect to WiFi
-  // WiFiManager wm;
+  // 2024-07-09 : version 초기화, 초기화하지 않고 읽으면 에러가 발생한다. 
+  SetIniString("software", "version", ESP32_SW_VERSION);
 
   if (check_ssid == "init_ap") {
     // No stored SSID, start WiFiManager
@@ -797,7 +811,95 @@ void deleteAllFiles(){
   deleteFile(SPIFFS, gatewayPath);
 }
 
+/*
 
+boolean checkSoftApKey3Sec() {
+
+  int currentSwitchState = digitalRead(switchPin);
+
+  // 스위치가 눌린 상태에서 눌림이 해제된 상태로 변환된 경우
+  if (currentSwitchState != lastSwitchState) {
+    if (currentSwitchState == HIGH) {
+      // 스위치가 눌리기 시작한 시간 기록
+      switchPressedTime = millis();
+    } 
+    // 스위치가 눌림에서 해제된 상태로 변경된 경우
+    else if (currentSwitchState == LOW) {
+      // 스위치가 해제된 경우 상태를 OFF로 설정
+      switchState = LOW;
+    }
+    // 마지막 스위치 상태 업데이트
+    lastSwitchState = currentSwitchState;
+    
+  }
+
+  // 스위치가 눌린 상태를 3초 동안 유지하는지 확인
+  if (currentSwitchState == HIGH && (millis() - switchPressedTime >= debounceDelay)) {
+    switchState = HIGH;
+  }
+
+
+  // 현재 스위치 상태에 따라 시리얼 모니터에 출력
+  if (switchState == HIGH) {
+    Serial.println("Switch is ON");
+    return true;
+  } else {
+    // Serial.println("Switch is OFF");
+    return false;
+  }
+}
+*/
+
+boolean checkSoftApKey3Sec() {
+
+  int currentSwitchState = digitalRead(switchPin);
+
+  // 스위치 상태가 변경된 경우 처리
+  if (currentSwitchState != lastSwitchState) {
+    // 스위치가 눌린 상태로 변경된 경우
+    if (currentSwitchState == HIGH) {
+      switchPressedTime = millis();
+    }
+    // 스위치가 해제된 상태로 변경된 경우
+    else if (currentSwitchState == LOW) {
+      switchState = LOW;
+    }
+    // 마지막 스위치 상태 업데이트
+    lastSwitchState = currentSwitchState;
+  }
+
+  // 스위치가 눌린 상태를 3초 동안 유지하는지 확인
+  if (currentSwitchState == HIGH && (millis() - switchPressedTime >= debounceDelay)) {
+    switchState = HIGH;
+  } else {
+    // 스위치가 눌린 상태가 아니거나 debounceDelay를 충족하지 못한 경우
+    return false;
+  }
+
+  // 현재 스위치 상태에 따라 시리얼 모니터에 출력
+  if (switchState == HIGH) {
+    Serial.println("Switch is ON");
+    return true;
+  } else {
+    // 이 부분은 실행되지 않지만 안전을 위해 남겨둠
+    return false;
+  }
+}
+
+void readSwitchPort() {
+  // 스위치 상태 읽기
+  int switchState = digitalRead(switchPin);
+
+  // 스위치 상태에 따라 시리얼 모니터에 출력
+  if (switchState == HIGH) {
+    Serial.println("Switch is ON");
+  } else {
+    Serial.println("Switch is OFF");
+  }
+
+  // 500ms 대기
+  delay(500);
+}
 
 void loop()
 {
@@ -814,86 +916,97 @@ void loop()
 
         // server.handleClient(); // 클라이언트 요청 처리
 
+        // readSwitchPort();
 
-        // 2024-06-04 computer terminal로 들어온 Serial 명령 처리
-        if (Serial.available()) {
-          String command = Serial.readStringUntil('\n');
-          command.trim();  // 공백 제거
+      // 2024-07-09 : softAP 키를 3초 동안 누르면 softAP 모드로 진입한다. 
+      if (checkSoftApKey3Sec() ) {
 
+        loop_start = "NO";
+        Serial.println("soft ap key pressed above 3 sec and YES_OP");
 
-          // Check if the command starts with "write serial#"
-          if (command.startsWith("write version:")) {
-            // ":" delimiter로 message를 분리
-            int delimiterIndex = command.indexOf(':');
-            String version = command.substring(delimiterIndex + 1);
-            version.trim();
-            Serial.printf("\nwrite version %s to flash\n", version.c_str());
-            SetIniString("software", "version", version);
-          }
-          else if(command.equals("read version")){
-            // Serial.println("read software version : ");
-            // Serial.println(GetIniString("software", "version", "0"));
-            Serial.printf("\nread version %s from flash", GetIniString("software", "version", "0").c_str());
-          }
+        SetIniString("softap", "ssid", "init_ap");
+        deleteAllFiles();
+        ESP.restart();
 
-          // 2024-06-09 : 증명서를 다시 발행하는 명령, 증명서가 한번 세팅이 되면 다시는 할 필요가 없다. 
-          else if (command.equals("reset_cert")) {
-          
-            initializeAwsJson();
+      };
 
-            Serial.println("reset certification");
-          }
-
-          // 2024-06-09 : stm 보드에서 추가 구현, softAP reset이 오면 이렇게 처리를 하면 된다. 추가 구현
-          else if(command.equals("reset softap")){
-              Serial.println("\n\n reset softAp  \n\n");
-              
-              SetIniString("softap", "ssid", "init_ap");
-              deleteAllFiles();
-
-              ESP.restart();
-              
-          }
-          
-          //2024-06-09 : mac address를 얻어낸다. 
-          else if(command.equals("mac_address")){
-              String macAddress = WiFi.macAddress();
-              char macAdd[100];
-              macAddress.toCharArray(macAdd, 100);
-              Serial.printf("\n\nmac address : %s \n\n", macAdd);
-          }
-
-          else if (command.equals("disconnect_mqtt")){
-            Serial.println("mqtt disconnect test.. ");
-            client.disconnect();
-            delay(2000);
-          }
-          
-          
-          else if(command.equals("set softap")){
-              Serial.println("\n\n set softAp  \n\n");
-              SetIniString("softap", "ssid", "operate");
-              
-          }
-          else if(command.equals("get softap")){
-
-            // String getId = GetIni("softap", "ssid", "none");
-            Serial.println("get softap : ");
-            Serial.println(GetIniString("softap", "ssid", "none"));
-
-          }
-          else{
-            Serial.println("Serial input command error!!!!!!!!");
-          }
-        }
-  
-
+     
   }
   
-  
-  
+// 2024-06-04 computer terminal로 들어온 Serial 명령 처리
+  if (Serial.available()) {
+
+    String command = Serial.readStringUntil('\n');
+    command.trim();  // 공백 제거
 
 
+    // Check if the command starts with "write serial#"
+    if (command.startsWith("write version:")) {
+      // ":" delimiter로 message를 분리
+      int delimiterIndex = command.indexOf(':');
+      String version = command.substring(delimiterIndex + 1);
+      version.trim();
+      Serial.printf("\nwrite version %s to flash\n", version.c_str());
+      SetIniString("software", "version", version);
+    }
+    else if(command.equals("read version")){
+      // Serial.println("read software version : ");
+      // Serial.println(GetIniString("software", "version", "0"));
+      Serial.printf("\nread version %s from flash", GetIniString("software", "version", "0").c_str());
+    }
+
+    // 2024-06-09 : 증명서를 다시 발행하는 명령, 증명서가 한번 세팅이 되면 다시는 할 필요가 없다. 
+    else if (command.equals("reset_cert")) {
+    
+      initializeAwsJson();
+
+      Serial.println("reset certification");
+    }
+
+    // 2024-06-09 : stm 보드에서 추가 구현, softAP reset이 오면 이렇게 처리를 하면 된다. 추가 구현
+    else if(command.equals("reset softap")){
+        Serial.println("\n\n reset softAp  \n\n");
+        
+        SetIniString("softap", "ssid", "init_ap");
+        deleteAllFiles();
+
+        ESP.restart();
+        
+    }
+    
+    //2024-06-09 : mac address를 얻어낸다. 
+    else if(command.equals("mac_address")){
+        String macAddress = WiFi.macAddress();
+        char macAdd[100];
+        macAddress.toCharArray(macAdd, 100);
+        Serial.printf("\n\nmac address : %s \n\n", macAdd);
+    }
+
+    else if (command.equals("disconnect_mqtt")){
+      Serial.println("mqtt disconnect test.. ");
+      client.disconnect();
+      delay(2000);
+    }
+    
+    
+    else if(command.equals("set softap")){
+        Serial.println("\n\n set softAp  \n\n");
+        SetIniString("softap", "ssid", "operate");
+        
+    }
+    else if(command.equals("get softap")){
+
+      // String getId = GetIni("softap", "ssid", "none");
+      Serial.println("get softap : ");
+      Serial.println(GetIniString("softap", "ssid", "none"));
+
+    }
+    else{
+      Serial.println("Serial input command error!!!!!!!!");
+    }
+  }
+
+  
   // 2024-05-06 :SerialPort로부터 데이터를 읽어옴
   // OZS 보드에서 MQTT가 연결이 되었는지 확인 메세지를 처리한다. 
   // 확인 메세지 "hello 8226"
@@ -939,7 +1052,5 @@ void loop()
   }
 
   //2024-05-29 : 10ms 마다 한번씩 체크한다. 시간을 획기적으로 줄였다.
-  // delay(100);
-
-
+  //  delay(100);
 }
