@@ -52,7 +52,7 @@ AsyncWebServer server(80);
 #define TXD2 17
 
 // 2024-07-10 : esp32 : software version 
-const char* ESP32_SW_VERSION = "0.0.5";
+const char* ESP32_SW_VERSION = "0.0.6";
 
 WiFiClientSecure net;
 PubSubClient client(net);
@@ -710,6 +710,7 @@ void setup()
     Serial.println("check_ssid is init_ap ....");
     loop_start = "NO";
     send_setup_voice_stm();     //음성으로 softAp 시작을 알려준다. 
+    Serial.println("Soft AP mode begins .....");
     gotoSoftApSetup();
 
   } 
@@ -956,7 +957,7 @@ void loop()
     }
 
     // 2024-06-09 : 증명서를 다시 발행하는 명령, 증명서가 한번 세팅이 되면 다시는 할 필요가 없다. 
-    else if (command.equals("reset_cert")) {
+    else if (command.equals("reset cert")) {
     
       initializeAwsJson();
 
@@ -975,17 +976,30 @@ void loop()
     }
     
     //2024-06-09 : mac address를 얻어낸다. 
-    else if(command.equals("mac_address")){
+    else if(command.equals("mac address")){
         String macAddress = WiFi.macAddress();
         char macAdd[100];
         macAddress.toCharArray(macAdd, 100);
-        Serial.printf("\n\nmac address : %s \n\n", macAdd);
+        Serial.printf("\n\nmac address : %s", macAdd);
     }
 
-    else if (command.equals("disconnect_mqtt")){
+    //2024-06-09 : mac address를 얻어낸다. 
+    else if(command.equals("read mode")){
+        // String macAddress = WiFi.macAddress();
+        // char macAdd[100];
+        // macAddress.toCharArray(macAdd, 100);
+        if(loop_start == "YES_OP"){
+              Serial.printf("\n\n **** normal mode state *** ");
+        } else {
+              Serial.printf("\n\n **** Soft AP mode state *** ");
+        }
+        
+    }
+
+    else if (command.equals("disconnect mqtt")){
       Serial.println("mqtt disconnect test.. ");
       client.disconnect();
-      delay(2000);
+      delay(200);
     }
     
     
