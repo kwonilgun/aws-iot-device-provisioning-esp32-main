@@ -52,7 +52,7 @@ AsyncWebServer server(80);
 #define TXD2 17
 
 // 2024-07-10 : esp32 : software version 
-const char* ESP32_SW_VERSION = "0.0.6";
+const String ESP32_SW_VERSION = "0.0.7";
 
 WiFiClientSecure net;
 PubSubClient client(net);
@@ -672,7 +672,10 @@ void gotoSoftApSetup() {
 
 void setup()
 {
+
+  
   Serial.begin(115200);
+  delay(1000);
 
   // 스위치 핀을 입력 모드로 설정
   pinMode(switchPin, INPUT);
@@ -703,7 +706,7 @@ void setup()
   Serial.println(gateway);
 
   // 2024-07-09 : version 초기화, 초기화하지 않고 읽으면 에러가 발생한다. 
-  SetIniString("software", "version", ESP32_SW_VERSION);
+  SetIniString("software", "version", ESP32_SW_VERSION.c_str());
 
   if (check_ssid == "init_ap") {
     // No stored SSID, start WiFiManager
@@ -934,8 +937,12 @@ void loop()
      
   }
   
+
 // 2024-06-04 computer terminal로 들어온 Serial 명령 처리
   if (Serial.available()) {
+
+    // // 2024-07-25 : '\r', '\n' 이 없는 경우 무한 루프에 빠지지 않도록 한다.  
+    // Serial.setTimeout(2000);  // Set a timeout of 1000 milliseconds (1 second)
 
     String command = Serial.readStringUntil('\n');
     command.trim();  // 공백 제거
@@ -953,7 +960,9 @@ void loop()
     else if(command.equals("read version")){
       // Serial.println("read software version : ");
       // Serial.println(GetIniString("software", "version", "0"));
-      Serial.printf("\nread version %s from flash", GetIniString("software", "version", "0").c_str());
+      Serial.printf("\nread version %s from flash\n", GetIniString("software", "version", "0").c_str());
+      delay(100);
+     
     }
 
     // 2024-06-09 : 증명서를 다시 발행하는 명령, 증명서가 한번 세팅이 되면 다시는 할 필요가 없다. 
@@ -978,9 +987,18 @@ void loop()
     //2024-06-09 : mac address를 얻어낸다. 
     else if(command.equals("mac address")){
         String macAddress = WiFi.macAddress();
-        char macAdd[100];
-        macAddress.toCharArray(macAdd, 100);
-        Serial.printf("\n\nmac address : %s", macAdd);
+        
+        if (macAddress.length() == 0) {
+        Serial.println("\n\nmac address : 없음");
+        } else {
+            char macAdd[100];
+            macAddress.toCharArray(macAdd, 100);
+            Serial.printf("\n\nmac address : %s \n", macAdd);
+        }
+        
+        // char macAdd[100];
+        // macAddress.toCharArray(macAdd, 100);
+        // Serial.printf("\n\nmac address : %s", macAdd);
     }
 
     //2024-06-09 : mac address를 얻어낸다. 
@@ -989,15 +1007,15 @@ void loop()
         // char macAdd[100];
         // macAddress.toCharArray(macAdd, 100);
         if(loop_start == "YES_OP"){
-              Serial.printf("\n\n **** normal mode state *** ");
+              Serial.printf("\n\n **** normal mode state *** \n");
         } else {
-              Serial.printf("\n\n **** Soft AP mode state *** ");
+              Serial.printf("\n\n **** Soft AP mode state *** \n");
         }
         
     }
 
     else if (command.equals("disconnect mqtt")){
-      Serial.println("mqtt disconnect test.. ");
+      Serial.println("\nmqtt disconnect test.. \n");
       client.disconnect();
       delay(200);
     }
@@ -1011,16 +1029,22 @@ void loop()
     else if(command.equals("get softap")){
 
       // String getId = GetIni("softap", "ssid", "none");
-      Serial.println("get softap : ");
+      Serial.println("get softap : \n");
       Serial.println(GetIniString("softap", "ssid", "none"));
 
     }
     else{
-      Serial.println("Serial input command error!!!!!!!!");
+      Serial.println("Serial input command error!!!!!!!!\n");
     }
+
+    //  // Clear the input buffer after processing the command
+    while (Serial.available()) {
+        Serial.read();
+    }
+    delay(100);
   }
 
-  
+ 
   // 2024-05-06 :SerialPort로부터 데이터를 읽어옴
   // OZS 보드에서 MQTT가 연결이 되었는지 확인 메세지를 처리한다. 
   // 확인 메세지 "hello 8226"
@@ -1066,5 +1090,5 @@ void loop()
   }
 
   //2024-05-29 : 10ms 마다 한번씩 체크한다. 시간을 획기적으로 줄였다.
-  //  delay(100);
+  delay(10);
 }

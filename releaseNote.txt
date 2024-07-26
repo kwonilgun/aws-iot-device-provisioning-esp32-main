@@ -1,0 +1,5 @@
+
+2024-07-25 : esp - version 0.0.7
+     . '/n', '/r' 없이 read version, mac address 2초 후에 자동 reading
+     .  업로드 후에 가비지 생기는 문제 발생, 하드웨어 리셋으로 처리
+     
