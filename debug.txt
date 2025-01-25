@@ -1,0 +1,118 @@
+check_ssid is init_ap ….
+send Setup voice to stm32f04
+send_serial_data = [{setup:voice}]
+
+Soft AP mode begins …..
+Setting AP (Access Point)
+[  1635][D][WiFiGeneric.cpp:1039] _eventCallback(): Arduino Event: 0 - WIFI_READY
+AP IP address: 192.168.4.1
+[  1723][V][WiFiGeneric.cpp:392] _arduino_event_cb(): AP Started
+[  1724][D][WiFiGeneric.cpp:1039] _eventCallback(): Arduino Event: 10 - AP_START
+[ 75484][V][WiFiGeneric.cpp:407] _arduino_event_cb(): AP Station Connected: MAC: 52:f9:7e:e3:bf:50, AID: 1
+[ 75485][D][WiFiGeneric.cpp:1039] _eventCallback(): Arduino Event: 12 - AP_STACONNECTED
+[ 75758][V][WiFiGeneric.cpp:421] _arduino_event_cb(): AP Station IP Assigned:192.168.4.2
+[ 75759][D][WiFiGeneric.cpp:1039] _eventCallback(): Arduino Event: 14 - AP_STAIPASSIGNED
+http_get /mac ….
+http post rx
+http post rx params = 4 
+The value of myBool is: true
+ p-> name = ssid 
+SSID set to: krt
+Writing file: /ssid.txt
+- file written
+The value of myBool is: true
+ p-> name = pass 
+Password set to: 01234567
+Writing file: /pass.txt
+- file written
+The value of myBool is: true
+ p-> name = ip 
+IP Address set to: 192.168.1.200
+Writing file: /ip.txt
+- file written
+The value of myBool is: true
+ p-> name = gateway 
+Gateway set to: 192.168.1.1
+Writing file: /gateway.txt
+- file written
+[ 79659][V][WiFiGeneric.cpp:414] _arduino_event_cb(): AP Station Disconnected: MAC: 52:f9:7e:e3:bf:50, AID: 1
+[ 79660][V][WiFiGeneric.cpp:395] _arduino_event_cb(): AP Stopped
+[ 79660][D][WiFiGeneric.cpp:1039] _eventCallback(): Arduino Event: 13 - AP_STADISCONNECTED
+[ 79672][D][WiFiGeneric.cpp:1039] _eventCallback(): Arduino Event: 11 - AP_STOP
+ets Jul 29 2019 12:21:46
+
+rst:0xc (SW_CPU_RESET),boot:0x13 (SPI_FAST_FLASH_BOOT)
+configsip: 0, SPIWP:0xee
+clk_drv:0x00,q_drv:0x00,d_drv:0x00,cs0_drv:0x00,hd_drv:0x00,wp_drv:0x00
+mode:DIO, clock div:2
+load:0x3fff0030,len:1184
+load:0x40078000,len:13232
+load:0x40080400,len:3028
+entry 0x400805e4
+[     7][D][esp32-hal-cpu.c:244] setCpuFrequencyMhz(): PLL: 480 / 2 = 240 Mhz, APB: 80000000 Hz
+SPIFFS mounted successfully
+Connecting to WiFi..start setup..
+operate
+Reading file: /ssid.txt
+Reading file: /pass.txt
+Reading file: /ip.txt
+Reading file: /gateway.txt
+krt
+01234567
+192.168.1.200
+192.168.1.1
+ssid_str =
+krt
+password =
+01234567
+[  1194][D][WiFiGeneric.cpp:1039] _eventCallback(): Arduino Event: 0 - WIFI_READY
+[  1278][V][WiFiGeneric.cpp:340] _arduino_event_cb(): STA Started
+[  1281][D][WiFiGeneric.cpp:1039] _eventCallback(): Arduino Event: 2 - STA_START
+[  1300][V][WiFiGeneric.cpp:97] set_esp_interface_ip(): Configuring Station static IP: 0.0.0.0, MASK: 0.0.0.0, GW: 0.0.0.0
+Connecting to WiFi…
+[  3724][V][WiFiGeneric.cpp:362] _arduino_event_cb(): STA Disconnected: SSID: krt, BSSID: 00:00:00:00:00:00, Reason: 201
+[  3725][D][WiFiGeneric.cpp:1039] _eventCallback(): Arduino Event: 5 - STA_DISCONNECTED
+[  3731][W][WiFiGeneric.cpp:1061] _eventCallback(): Reason: 201 - NO_AP_FOUND
+[  3738][D][WiFiGeneric.cpp:1081] _eventCallback(): WiFi Reconnect Running
+[  3747][V][WiFiGeneric.cpp:97] set_esp_interface_ip(): Configuring Station static IP: 0.0.0.0, MASK: 0.0.0.0, GW: 0.0.0.0
+[  6177][V][WiFiGeneric.cpp:362] _arduino_event_cb(): STA Disconnected: SSID: krt, BSSID: 00:00:00:00:00:00, Reason: 201
+[  6178][D][WiFiGeneric.cpp:1039] _eventCallback(): Arduino Event: 5 - STA_DISCONNECTED
+[  6185][W][WiFiGeneric.cpp:1061] _eventCallback(): Reason: 201 - NO_AP_FOUND
+[  6192][D][WiFiGeneric.cpp:1085] _eventCallback(): WiFi AutoReconnect Running
+[  6201][V][WiFiGeneric.cpp:97] set_esp_interface_ip(): Configuring Station static IP: 0.0.0.0, MASK: 0.0.0.0, GW: 0.0.0.0
+Failed to connect.
+***********
+ !!!!!!!connection fail and restart ESP!!!!!!
+***********
+Deleting file: /ssid.txt
+File deleted successfully
+Deleting file: /pass.txt
+File deleted successfully
+Deleting file: /ip.txt
+File deleted successfully
+Deleting file: /gateway.txt
+File deleted successfully
+ets Jul 29 2019 12:21:46
+
+rst:0xc (SW_CPU_RESET),boot:0x13 (SPI_FAST_FLASH_BOOT)
+configsip: 0, SPIWP:0xee
+clk_drv:0x00,q_drv:0x00,d_drv:0x00,cs0_drv:0x00,hd_drv:0x00,wp_drv:0x00
+mode:DIO, clock div:2
+load:0x3fff0030,len:1184
+load:0x40078000,len:13232
+load:0x40080400,len:3028
+entry 0x400805e4
+[     7][D][esp32-hal-cpu.c:244] setCpuFrequencyMhz(): PLL: 480 / 2 = 240 Mhz, APB: 80000000 Hz
+SPIFFS mounted successfully
+Connecting to WiFi..start setup..
+init_ap
+Reading file: /ssid.txt
+- failed to open file for reading
+Reading file: /pass.txt
+- failed to open file for reading
+Reading file: /ip.txt
+- failed to open file for reading
+Reading file: /gateway.txt
+- failed to open file for reading
+
+

@@ -24,6 +24,7 @@
 #include "serial_communication.h"
 #include "main.h"
 #include "util.h"
+#include <string>
 
 //2024-06-08 :  wifi manager 추가
 #include <WiFiManager.h> // https://github.com/tzapu/WiFiManager
@@ -50,6 +51,9 @@ AsyncWebServer server(80);
 
 #define RXD2 16
 #define TXD2 17
+
+// 2024-07-10 : esp32 : software version 
+const String ESP32_SW_VERSION = "0.0.7";
 
 WiFiClientSecure net;
 PubSubClient client(net);
@@ -95,12 +99,20 @@ IPAddress subnet(255, 255, 0, 0);
 
 // Timer variables
 unsigned long previousMillis = 0;
-const long interval = 5000;  // interval to wait for Wi-Fi connection (milliseconds)
+const long interval = 20000;  // interval to wait for Wi-Fi connection (milliseconds)
 
-String loop_start = "NO_OP"; 
+String loop_start = "NO"; 
 
 // 2024-06-18 : wifi 세팅이 제대로 되었는 지 확인하는 status 
 // bool wifiConnectionSuccess = false;
+
+// 2024-07-08 : softAP key 추가
+const int switchPin = 4; // 스위치가 연결된 GPIO 핀
+const unsigned long debounceDelay = 3000; // 3초 지연 시간 (밀리초)
+
+unsigned long switchPressedTime = 0; // 스위치가 눌린 시간
+bool switchState = LOW; // 현재 스위치 상태
+bool lastSwitchState = LOW; // 마지막 스위치 상태
 
 
 void initializeAwsJson()
@@ -212,8 +224,8 @@ void connectToAWS(DynamicJsonDocument cert)
   // 참조 사이트: PubSubClient API : https://pubsubclient.knolleary.net/api#setKeepAlive
 
 
-  //2024-06-05 : 5분에 한번씩 PINGREQ를 보낸다.  
-  client.setKeepAlive(30 * 10);
+  //2024-06-05 : 15분에 한번씩 PINGREQ를 보낸다.  15분에 한번씩 ping을 한다. 
+  client.setKeepAlive(15 * 60);
 
   
   
@@ -511,47 +523,123 @@ void reconnect() {
 }
 
 
+bool initWiFi(String cont, String ssid_str, String password) {
+  // NVS 초기화
+  preferences.begin("WiFiPrefs", false);
+
+  // 이전 재시도 횟수 불러오기
+  int restartCount = preferences.getInt("restartCount", 0);
+
+  if (restartCount >= 10) {
+    Serial.println("Exceeded maximum restart attempts. Connection failed.");
+    preferences.end(); // NVS 닫기
+    return false;
+  }
+
+  if ((ssid_str == "") || (cont == "init_ap")) {
+    Serial.println("Undefined SSID or IP address.");
+    preferences.end(); // NVS 닫기
+    return false;
+  }
+
+  Serial.println("ssid_str =");
+  Serial.println(ssid_str);
+  Serial.println("password =");
+  Serial.println(password);
+
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(ssid_str, password);
+
+  delay(3000); // WiFi 연결 대기
+  Serial.println("Checking WiFi status...");
+
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.println("=======WL_CONNECTED========");
+    Serial.println("IP address: ");
+    Serial.println(WiFi.localIP());
+
+    // 연결 성공 시 재시도 횟수 초기화
+    preferences.putInt("restartCount", 0);
+    preferences.end();
+    return true;
+  } else if (WiFi.status() == WL_IDLE_STATUS) {
+    Serial.print(restartCount);
+    Serial.println("=======WL_IDLE========");
+    
+    Serial.println("Restarting ESP...");
+
+    // 재시도 횟수 증가 및 저장
+    restartCount++;
+    preferences.putInt("restartCount", restartCount);
+    preferences.end();
+    ESP.restart();
+  } else {
+    Serial.println("WiFi connection failed.");
+    preferences.putInt("restartCount", 0);
+    preferences.end();
+    return false;
+  }
+}
+
+/*************** ******************************
+ 
 // Initialize WiFi
-bool initWiFi(String cont) {
+bool initWiFi(String cont, String ssid_str, String password) {
   // if(ssid=="" || ip==""){
-  if((ssid=="") || (cont == "init_ap")){
+  if((ssid_str == "") || (cont == "init_ap")){
     Serial.println("Undefined SSID or IP address.");
     return false;
   }
 
+  Serial.println("ssid_str =");
+  Serial.println(ssid_str);
+  Serial.println("password =");
+  Serial.println(password);
+
   WiFi.mode(WIFI_STA);
-  // localIP.fromString(ip.c_str());
-  // localGateway.fromString(gateway.c_str());
-
-
-  // if (!WiFi.config(localIP, localGateway, subnet)){
-  //   Serial.println("STA Failed to configure");
-  //   return false;
-  // }
 
   // 2024-06-16 : ssid, password setting 
-  WiFi.begin(ssid.c_str(), pass.c_str());
+  WiFi.begin(ssid_str, password);
+
+// 2025-01-23 : wifi 연결하는 동안 기다려준다. access point 기기 마다 시간이 걸릴 수 있다. 
+  delay(3000);
   // WiFi.begin(ssid.c_str(), );
   Serial.println("Connecting to WiFi...");
 
-  unsigned long currentMillis = millis();
-  previousMillis = currentMillis;
+// 2025-01-25 : WiFi.begin()의 경우 ipTime 2004S와 연결 시에 New ip를 할당받지 못하는 경우가 발생할 수 있다. 이렇게 되면 status는 idle 모드가 온다. retry를 해야 한다. ESP.restart()를 콜해서 다시 시작을 하면, WL_CONNECTED 모드가 온다. 
 
-  while(WiFi.status() != WL_CONNECTED) {
-    currentMillis = millis();
-    if (currentMillis - previousMillis >= interval) {
-      Serial.println("Failed to connect.");
-      return false;
-    }
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.println("=======WL_CONNECTED========");
+    // Serial.println("WiFi connected");
+    Serial.println("IP address: ");
+    Serial.println(WiFi.localIP());
+    return true;
+  } else if (WiFi.status() == WL_IDLE_STATUS) {
+    Serial.println("=======WL_IDLE========");
+    // Serial.println("WiFi connected");
+    Serial.println("IP address: ");
+    Serial.println(WiFi.localIP());
+
+    
+    ESP.restart();
+  
+  } 
+  
+  
+  else {
+    Serial.println("");
+    Serial.println("WiFi connection failed");
+
+    return false;
   }
 
-  Serial.println("WiFi succeed to connect");
-  Serial.println(WiFi.localIP());
-
-  //  wifiConnectionSuccess = true; // Set flag to true on success
+// swg_2_4G, krt
   
-  return true;
+
+
 }
+
+*****************************************************/
 
 void gotoSoftApSetup() {
         // Connect to Wi-Fi network with SSID and password
@@ -575,6 +663,8 @@ void gotoSoftApSetup() {
     server.on("/mac", HTTP_GET, [](AsyncWebServerRequest *request){
       Serial.println("http_get /mac ....");
       String mac = WiFi.macAddress();
+      // 2025-01-24 : mac 읽는 시간 추가
+      delay(1000);
       request->send(200, "text/plain", mac);
       
     });
@@ -617,7 +707,7 @@ void gotoSoftApSetup() {
             // Write file to save value
             writeFile(SPIFFS, ssidPath, ssid.c_str());
           }
-          // HTTP POST pass value
+          // HTTP POST password value
           if (p->name() == PARAM_INPUT_2) {
             pass = p->value().c_str();
             Serial.print("Password set to: ");
@@ -647,12 +737,14 @@ void gotoSoftApSetup() {
       request->send(200, "text/plain", "Done. ESP will restart, connect to your router and go to IP address: " + ip);
       
       
-      delay(2000);
+      // delay(2000);
 
       SetIniString("softap", "ssid", "operate");
 
       // wifiConnectionSuccess = false; // Set flag to false on failure
       // delay(10000); // Add a delay to ensure the HTTP response can be sent before restart, 10초를 기다린다. 
+
+     delay(2000);
 
       ESP.restart();
     });
@@ -661,7 +753,13 @@ void gotoSoftApSetup() {
 
 void setup()
 {
+
+  
   Serial.begin(115200);
+  delay(500);
+
+  // 스위치 핀을 입력 모드로 설정
+  pinMode(switchPin, INPUT);
 
   // Note the format for setting a serial port is as follows: Serial2.begin(baud-rate, protocol, RX pin, TX pin);
  
@@ -688,14 +786,15 @@ void setup()
   Serial.println(ip);
   Serial.println(gateway);
 
-  // Attempt to connect to WiFi
-  // WiFiManager wm;
+  // 2024-07-09 : version 초기화, 초기화하지 않고 읽으면 에러가 발생한다. 
+  SetIniString("software", "version", ESP32_SW_VERSION.c_str());
 
   if (check_ssid == "init_ap") {
     // No stored SSID, start WiFiManager
     Serial.println("check_ssid is init_ap ....");
     loop_start = "NO";
     send_setup_voice_stm();     //음성으로 softAp 시작을 알려준다. 
+    Serial.println("Soft AP mode begins .....");
     gotoSoftApSetup();
 
   } 
@@ -705,7 +804,7 @@ void setup()
     gotoSoftApSetup();
   }
   else {
-    if(initWiFi("operate")){
+    if(initWiFi("operate", ssid, pass)){
           // Route for root / web page
               Serial.println("initWiFi OK");
               loop_start = "YES_OP";
@@ -797,7 +896,95 @@ void deleteAllFiles(){
   deleteFile(SPIFFS, gatewayPath);
 }
 
+/*
 
+boolean checkSoftApKey3Sec() {
+
+  int currentSwitchState = digitalRead(switchPin);
+
+  // 스위치가 눌린 상태에서 눌림이 해제된 상태로 변환된 경우
+  if (currentSwitchState != lastSwitchState) {
+    if (currentSwitchState == HIGH) {
+      // 스위치가 눌리기 시작한 시간 기록
+      switchPressedTime = millis();
+    } 
+    // 스위치가 눌림에서 해제된 상태로 변경된 경우
+    else if (currentSwitchState == LOW) {
+      // 스위치가 해제된 경우 상태를 OFF로 설정
+      switchState = LOW;
+    }
+    // 마지막 스위치 상태 업데이트
+    lastSwitchState = currentSwitchState;
+    
+  }
+
+  // 스위치가 눌린 상태를 3초 동안 유지하는지 확인
+  if (currentSwitchState == HIGH && (millis() - switchPressedTime >= debounceDelay)) {
+    switchState = HIGH;
+  }
+
+
+  // 현재 스위치 상태에 따라 시리얼 모니터에 출력
+  if (switchState == HIGH) {
+    Serial.println("Switch is ON");
+    return true;
+  } else {
+    // Serial.println("Switch is OFF");
+    return false;
+  }
+}
+*/
+
+boolean checkSoftApKey3Sec() {
+
+  int currentSwitchState = digitalRead(switchPin);
+
+  // 스위치 상태가 변경된 경우 처리
+  if (currentSwitchState != lastSwitchState) {
+    // 스위치가 눌린 상태로 변경된 경우
+    if (currentSwitchState == HIGH) {
+      switchPressedTime = millis();
+    }
+    // 스위치가 해제된 상태로 변경된 경우
+    else if (currentSwitchState == LOW) {
+      switchState = LOW;
+    }
+    // 마지막 스위치 상태 업데이트
+    lastSwitchState = currentSwitchState;
+  }
+
+  // 스위치가 눌린 상태를 3초 동안 유지하는지 확인
+  if (currentSwitchState == HIGH && (millis() - switchPressedTime >= debounceDelay)) {
+    switchState = HIGH;
+  } else {
+    // 스위치가 눌린 상태가 아니거나 debounceDelay를 충족하지 못한 경우
+    return false;
+  }
+
+  // 현재 스위치 상태에 따라 시리얼 모니터에 출력
+  if (switchState == HIGH) {
+    Serial.println("Switch is ON");
+    return true;
+  } else {
+    // 이 부분은 실행되지 않지만 안전을 위해 남겨둠
+    return false;
+  }
+}
+
+void readSwitchPort() {
+  // 스위치 상태 읽기
+  int switchState = digitalRead(switchPin);
+
+  // 스위치 상태에 따라 시리얼 모니터에 출력
+  if (switchState == HIGH) {
+    Serial.println("Switch is ON");
+  } else {
+    Serial.println("Switch is OFF");
+  }
+
+  // 500ms 대기
+  delay(500);
+}
 
 void loop()
 {
@@ -814,86 +1001,133 @@ void loop()
 
         // server.handleClient(); // 클라이언트 요청 처리
 
+        // readSwitchPort();
 
-        // 2024-06-04 computer terminal로 들어온 Serial 명령 처리
-        if (Serial.available()) {
-          String command = Serial.readStringUntil('\n');
-          command.trim();  // 공백 제거
+      // 2024-07-09 : softAP 키를 3초 동안 누르면 softAP 모드로 진입한다. 
+      if (checkSoftApKey3Sec() ) {
 
+        loop_start = "NO";
+        Serial.println("soft ap key pressed above 3 sec and YES_OP");
 
-          // Check if the command starts with "write serial#"
-          if (command.startsWith("write version:")) {
-            // ":" delimiter로 message를 분리
-            int delimiterIndex = command.indexOf(':');
-            String version = command.substring(delimiterIndex + 1);
-            version.trim();
-            Serial.printf("\nwrite version %s to flash\n", version.c_str());
-            SetIniString("software", "version", version);
-          }
-          else if(command.equals("read version")){
-            // Serial.println("read software version : ");
-            // Serial.println(GetIniString("software", "version", "0"));
-            Serial.printf("\nread version %s from flash", GetIniString("software", "version", "0").c_str());
-          }
+        SetIniString("softap", "ssid", "init_ap");
+        deleteAllFiles();
+        ESP.restart();
 
-          // 2024-06-09 : 증명서를 다시 발행하는 명령, 증명서가 한번 세팅이 되면 다시는 할 필요가 없다. 
-          else if (command.equals("reset_cert")) {
-          
-            initializeAwsJson();
+      };
 
-            Serial.println("reset certification");
-          }
-
-          // 2024-06-09 : stm 보드에서 추가 구현, softAP reset이 오면 이렇게 처리를 하면 된다. 추가 구현
-          else if(command.equals("reset softap")){
-              Serial.println("\n\n reset softAp  \n\n");
-              
-              SetIniString("softap", "ssid", "init_ap");
-              deleteAllFiles();
-
-              ESP.restart();
-              
-          }
-          
-          //2024-06-09 : mac address를 얻어낸다. 
-          else if(command.equals("mac_address")){
-              String macAddress = WiFi.macAddress();
-              char macAdd[100];
-              macAddress.toCharArray(macAdd, 100);
-              Serial.printf("\n\nmac address : %s \n\n", macAdd);
-          }
-
-          else if (command.equals("disconnect_mqtt")){
-            Serial.println("mqtt disconnect test.. ");
-            client.disconnect();
-            delay(2000);
-          }
-          
-          
-          else if(command.equals("set softap")){
-              Serial.println("\n\n set softAp  \n\n");
-              SetIniString("softap", "ssid", "operate");
-              
-          }
-          else if(command.equals("get softap")){
-
-            // String getId = GetIni("softap", "ssid", "none");
-            Serial.println("get softap : ");
-            Serial.println(GetIniString("softap", "ssid", "none"));
-
-          }
-          else{
-            Serial.println("Serial input command error!!!!!!!!");
-          }
-        }
-  
-
+     
   }
   
-  
-  
+
+// 2024-06-04 computer terminal로 들어온 Serial 명령 처리
+  if (Serial.available()) {
+
+    // // 2024-07-25 : '\r', '\n' 이 없는 경우 무한 루프에 빠지지 않도록 한다.  
+    // Serial.setTimeout(2000);  // Set a timeout of 1000 milliseconds (1 second)
+
+    String command = Serial.readStringUntil('\n');
+    command.trim();  // 공백 제거
 
 
+    // Check if the command starts with "write serial#"
+    if (command.startsWith("write version:")) {
+      // ":" delimiter로 message를 분리
+      int delimiterIndex = command.indexOf(':');
+      String version = command.substring(delimiterIndex + 1);
+      version.trim();
+      Serial.printf("\nwrite version %s to flash\n", version.c_str());
+      SetIniString("software", "version", version);
+    }
+   
+    else if(command.equals("read version")){
+      // Serial.println("read software version : ");
+      // Serial.println(GetIniString("software", "version", "0"));
+      Serial.printf("\nread version %s from flash\n", GetIniString("software", "version", "0").c_str());
+      delay(100);
+     
+    }
+
+    // 2024-06-09 : 증명서를 다시 발행하는 명령, 증명서가 한번 세팅이 되면 다시는 할 필요가 없다. 
+    else if (command.equals("reset cert")) {
+    
+      initializeAwsJson();
+
+      Serial.println("reset certification");
+    }
+
+    // 2024-06-09 : stm 보드에서 추가 구현, softAP reset이 오면 이렇게 처리를 하면 된다. 추가 구현
+    else if(command.equals("reset softap")){
+        Serial.println("\n\n reset softAp  \n\n");
+        
+        SetIniString("softap", "ssid", "init_ap");
+        deleteAllFiles();
+
+        ESP.restart();
+        
+    }
+    
+    //2024-06-09 : mac address를 얻어낸다. 
+    else if(command.equals("mac address")){
+        String macAddress = WiFi.macAddress();
+        
+        if (macAddress.length() == 0) {
+        Serial.println("\n\nmac address : 없음");
+        } else {
+            char macAdd[100];
+            macAddress.toCharArray(macAdd, 100);
+            Serial.printf("\n\nmac address : %s \n", macAdd);
+        }
+        
+        // char macAdd[100];
+        // macAddress.toCharArray(macAdd, 100);
+        // Serial.printf("\n\nmac address : %s", macAdd);
+    }
+
+    //2024-06-09 : mac address를 얻어낸다. 
+    else if(command.equals("read mode")){
+        // String macAddress = WiFi.macAddress();
+        // char macAdd[100];
+        // macAddress.toCharArray(macAdd, 100);
+        if(loop_start == "YES_OP"){
+              Serial.printf("\n\n **** normal mode state *** \n");
+        } else {
+              Serial.printf("\n\n **** Soft AP mode state *** \n");
+        }
+        
+    }
+
+    else if (command.equals("disconnect mqtt")){
+      Serial.println("\nmqtt disconnect test.. \n");
+      client.disconnect();
+      delay(200);
+    }
+    
+    
+    else if(command.equals("set softap")){
+        Serial.println("\n\n set softAp  \n\n");
+        SetIniString("softap", "ssid", "operate");
+        
+    }
+    else if(command.equals("get softap")){
+
+      // String getId = GetIni("softap", "ssid", "none");
+      Serial.println("get softap : \n");
+      Serial.println(GetIniString("softap", "ssid", "none"));
+
+    }
+    else{
+      Serial.println(".....\n");
+      delay(10);
+    }
+
+    //  // Clear the input buffer after processing the command
+    while (Serial.available()) {
+        Serial.read();
+    }
+    delay(100);
+  }
+
+ 
   // 2024-05-06 :SerialPort로부터 데이터를 읽어옴
   // OZS 보드에서 MQTT가 연결이 되었는지 확인 메세지를 처리한다. 
   // 확인 메세지 "hello 8226"
@@ -939,7 +1173,5 @@ void loop()
   }
 
   //2024-05-29 : 10ms 마다 한번씩 체크한다. 시간을 획기적으로 줄였다.
-  // delay(100);
-
-
+  delay(10);
 }

@@ -1,0 +1,105 @@
+check_ssid is init_ap ….
+send Setup voice to stm32f04
+send_serial_data = [{setup:voice}]
+
+Soft AP mode begins …..
+Setting AP (Access Point)
+[  1635][D][WiFiGeneric.cpp:1039] _eventCallback(): Arduino Event: 0 - WIFI_READY
+AP IP address: 192.168.4.1
+[  1723][V][WiFiGeneric.cpp:392] _arduino_event_cb(): AP Started
+[  1724][D][WiFiGeneric.cpp:1039] _eventCallback(): Arduino Event: 10 - AP_START
+[ 69379][V][WiFiGeneric.cpp:407] _arduino_event_cb(): AP Station Connected: MAC: 52:f9:7e:e3:bf:50, AID: 1
+[ 69380][D][WiFiGeneric.cpp:1039] _eventCallback(): Arduino Event: 12 - AP_STACONNECTED
+[ 69470][V][WiFiGeneric.cpp:421] _arduino_event_cb(): AP Station IP Assigned:192.168.4.2
+[ 69472][D][WiFiGeneric.cpp:1039] _eventCallback(): Arduino Event: 14 - AP_STAIPASSIGNED
+http_get /mac ….
+http post rx
+http post rx params = 4 
+The value of myBool is: true
+ p-> name = ssid 
+SSID set to: swg_2_4G
+Writing file: /ssid.txt
+- file written
+The value of myBool is: true
+ p-> name = pass 
+Password set to: 01234567
+Writing file: /pass.txt
+- file written
+The value of myBool is: true
+ p-> name = ip 
+IP Address set to: 192.168.1.200
+Writing file: /ip.txt
+- file written
+The value of myBool is: true
+ p-> name = gateway 
+Gateway set to: 192.168.1.1
+Writing file: /gateway.txt
+- file written
+[ 73665][V][WiFiGeneric.cpp:414] _arduino_event_cb(): AP Station Disconnected: MAC: 52:f9:7e:e3:bf:50, AID: 1
+[ 73666][V][WiFiGeneric.cpp:395] _arduino_event_cb(): AP Stopped
+[ 73666][D][WiFiGeneric.cpp:1039] _eventCallback(): Arduino Event: 13 - AP_STADISCONNECTED
+[ 73678][D][WiFiGeneric.cpp:1039] _eventCallback(): Arduino Event: 11 - AP_STOP
+ets Jul 29 2019 12:21:46
+
+rst:0xc (SW_CPU_RESET),boot:0x13 (SPI_FAST_FLASH_BOOT)
+configsip: 0, SPIWP:0xee
+clk_drv:0x00,q_drv:0x00,d_drv:0x00,cs0_drv:0x00,hd_drv:0x00,wp_drv:0x00
+mode:DIO, clock div:2
+load:0x3fff0030,len:1184
+load:0x40078000,len:13232
+load:0x40080400,len:3028
+entry 0x400805e4
+[     7][D][esp32-hal-cpu.c:244] setCpuFrequencyMhz(): PLL: 480 / 2 = 240 Mhz, APB: 80000000 Hz
+SPIFFS mounted successfully
+Connecting to WiFi..start setup..
+operate
+Reading file: /ssid.txt
+Reading file: /pass.txt
+Reading file: /ip.txt
+Reading file: /gateway.txt
+swg_2_4G
+01234567
+192.168.1.200
+192.168.1.1
+ssid_str =
+swg_2_4G
+password =
+01234567
+[  1194][D][WiFiGeneric.cpp:1039] _eventCallback(): Arduino Event: 0 - WIFI_READY
+[  1279][V][WiFiGeneric.cpp:340] _arduino_event_cb(): STA Started
+[  1281][D][WiFiGeneric.cpp:1039] _eventCallback(): Arduino Event: 2 - STA_START
+[  1298][V][WiFiGeneric.cpp:97] set_esp_interface_ip(): Configuring Station static IP: 0.0.0.0, MASK: 0.0.0.0, GW: 0.0.0.0
+Connecting to WiFi…
+[  2358][V][WiFiGeneric.cpp:355] _arduino_event_cb(): STA Connected: SSID: swg_2_4G, BSSID: 92:9f:33:44:ca:cc, Channel: 2, Auth: WPA2_PSK
+[  2359][D][WiFiGeneric.cpp:1039] _eventCallback(): Arduino Event: 4 - STA_CONNECTED
+[  2991][V][WiFiGeneric.cpp:369] _arduino_event_cb(): STA Got New IP:192.168.0.77
+[  2992][D][WiFiGeneric.cpp:1039] _eventCallback(): Arduino Event: 7 - STA_GOT_IP
+[  2995][D][WiFiGeneric.cpp:1102] _eventCallback(): STA IP: 192.168.0.77, MASK: 255.255.255.0, GW: 192.168.0.1
+WiFi succeed to connect
+192.168.0.77
+initWiFi OK
+Connected.
+
+succeed to open file for reading..
+deserializeError false
+buffer resized
+Connecting to AWS IOT..[  4116][V][ssl_client.cpp:62] start_ssl_client(): Free internal heap before TLS 234708
+[  4117][V][ssl_client.cpp:68] start_ssl_client(): Starting socket
+[  4150][V][ssl_client.cpp:146] start_ssl_client(): Seeding the random number generator
+[  4152][V][ssl_client.cpp:155] start_ssl_client(): Setting up the SSL/TLS structure…
+[  4157][V][ssl_client.cpp:178] start_ssl_client(): Loading CA cert
+[  4165][V][ssl_client.cpp:234] start_ssl_client(): Loading CRT cert
+[  4170][V][ssl_client.cpp:243] start_ssl_client(): Loading private key
+[  4178][V][ssl_client.cpp:254] start_ssl_client(): Setting hostname for TLS session…
+[  4181][V][ssl_client.cpp:269] start_ssl_client(): Performing the SSL/TLS handshake…
+[  8223][D][ssl_client.cpp:282] start_ssl_client(): Protocol is TLSv1.2 Ciphersuite is TLS-ECDHE-RSA-WITH-AES-128-GCM-SHA256
+[  8224][D][ssl_client.cpp:284] start_ssl_client(): Record expansion is 29
+[  8230][V][ssl_client.cpp:290] start_ssl_client(): Verifying peer X.509 certificate…
+[  8238][V][ssl_client.cpp:298] start_ssl_client(): Certificate verified.
+[  8245][V][ssl_client.cpp:313] start_ssl_client(): Free internal heap after TLS 188624
+
+Connected
+MQTT state: 0
+Subscription topic: ozs/client8266/D0:EF:76:33:99:D4
+ Write HTTP request: 37
+send wifi ready to ozs
