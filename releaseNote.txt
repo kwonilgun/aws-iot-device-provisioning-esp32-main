@@ -2,4 +2,7 @@
 2024-07-25 : esp - version 0.0.7
      . '/n', '/r' 없이 read version, mac address 2초 후에 자동 reading
      .  업로드 후에 가비지 생기는 문제 발생, 하드웨어 리셋으로 처리
-     
+
+2025-01-25 : esp - version 0.1.0     
+     . main.cpp 수정 : ipTime A2004S 설정 안되는 문제 Fix
+      - WiFi.begin 시에 idle 모드가 return 되는 경우 reboot를 해서 connected 모드가 설정되도록 함. 

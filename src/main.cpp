@@ -24,6 +24,7 @@
 #include "serial_communication.h"
 #include "main.h"
 #include "util.h"
+#include <string>
 
 //2024-06-08 :  wifi manager 추가
 #include <WiFiManager.h> // https://github.com/tzapu/WiFiManager
@@ -98,7 +99,7 @@ IPAddress subnet(255, 255, 0, 0);
 
 // Timer variables
 unsigned long previousMillis = 0;
-const long interval = 5000;  // interval to wait for Wi-Fi connection (milliseconds)
+const long interval = 20000;  // interval to wait for Wi-Fi connection (milliseconds)
 
 String loop_start = "NO"; 
 
@@ -522,47 +523,123 @@ void reconnect() {
 }
 
 
+bool initWiFi(String cont, String ssid_str, String password) {
+  // NVS 초기화
+  preferences.begin("WiFiPrefs", false);
+
+  // 이전 재시도 횟수 불러오기
+  int restartCount = preferences.getInt("restartCount", 0);
+
+  if (restartCount >= 10) {
+    Serial.println("Exceeded maximum restart attempts. Connection failed.");
+    preferences.end(); // NVS 닫기
+    return false;
+  }
+
+  if ((ssid_str == "") || (cont == "init_ap")) {
+    Serial.println("Undefined SSID or IP address.");
+    preferences.end(); // NVS 닫기
+    return false;
+  }
+
+  Serial.println("ssid_str =");
+  Serial.println(ssid_str);
+  Serial.println("password =");
+  Serial.println(password);
+
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(ssid_str, password);
+
+  delay(3000); // WiFi 연결 대기
+  Serial.println("Checking WiFi status...");
+
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.println("=======WL_CONNECTED========");
+    Serial.println("IP address: ");
+    Serial.println(WiFi.localIP());
+
+    // 연결 성공 시 재시도 횟수 초기화
+    preferences.putInt("restartCount", 0);
+    preferences.end();
+    return true;
+  } else if (WiFi.status() == WL_IDLE_STATUS) {
+    Serial.print(restartCount);
+    Serial.println("=======WL_IDLE========");
+    
+    Serial.println("Restarting ESP...");
+
+    // 재시도 횟수 증가 및 저장
+    restartCount++;
+    preferences.putInt("restartCount", restartCount);
+    preferences.end();
+    ESP.restart();
+  } else {
+    Serial.println("WiFi connection failed.");
+    preferences.putInt("restartCount", 0);
+    preferences.end();
+    return false;
+  }
+}
+
+/*************** ******************************
+ 
 // Initialize WiFi
-bool initWiFi(String cont) {
+bool initWiFi(String cont, String ssid_str, String password) {
   // if(ssid=="" || ip==""){
-  if((ssid=="") || (cont == "init_ap")){
+  if((ssid_str == "") || (cont == "init_ap")){
     Serial.println("Undefined SSID or IP address.");
     return false;
   }
 
+  Serial.println("ssid_str =");
+  Serial.println(ssid_str);
+  Serial.println("password =");
+  Serial.println(password);
+
   WiFi.mode(WIFI_STA);
-  // localIP.fromString(ip.c_str());
-  // localGateway.fromString(gateway.c_str());
-
-
-  // if (!WiFi.config(localIP, localGateway, subnet)){
-  //   Serial.println("STA Failed to configure");
-  //   return false;
-  // }
 
   // 2024-06-16 : ssid, password setting 
-  WiFi.begin(ssid.c_str(), pass.c_str());
+  WiFi.begin(ssid_str, password);
+
+// 2025-01-23 : wifi 연결하는 동안 기다려준다. access point 기기 마다 시간이 걸릴 수 있다. 
+  delay(3000);
   // WiFi.begin(ssid.c_str(), );
   Serial.println("Connecting to WiFi...");
 
-  unsigned long currentMillis = millis();
-  previousMillis = currentMillis;
+// 2025-01-25 : WiFi.begin()의 경우 ipTime 2004S와 연결 시에 New ip를 할당받지 못하는 경우가 발생할 수 있다. 이렇게 되면 status는 idle 모드가 온다. retry를 해야 한다. ESP.restart()를 콜해서 다시 시작을 하면, WL_CONNECTED 모드가 온다. 
 
-  while(WiFi.status() != WL_CONNECTED) {
-    currentMillis = millis();
-    if (currentMillis - previousMillis >= interval) {
-      Serial.println("Failed to connect.");
-      return false;
-    }
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.println("=======WL_CONNECTED========");
+    // Serial.println("WiFi connected");
+    Serial.println("IP address: ");
+    Serial.println(WiFi.localIP());
+    return true;
+  } else if (WiFi.status() == WL_IDLE_STATUS) {
+    Serial.println("=======WL_IDLE========");
+    // Serial.println("WiFi connected");
+    Serial.println("IP address: ");
+    Serial.println(WiFi.localIP());
+
+    
+    ESP.restart();
+  
+  } 
+  
+  
+  else {
+    Serial.println("");
+    Serial.println("WiFi connection failed");
+
+    return false;
   }
 
-  Serial.println("WiFi succeed to connect");
-  Serial.println(WiFi.localIP());
-
-  //  wifiConnectionSuccess = true; // Set flag to true on success
+// swg_2_4G, krt
   
-  return true;
+
+
 }
+
+*****************************************************/
 
 void gotoSoftApSetup() {
         // Connect to Wi-Fi network with SSID and password
@@ -586,6 +663,8 @@ void gotoSoftApSetup() {
     server.on("/mac", HTTP_GET, [](AsyncWebServerRequest *request){
       Serial.println("http_get /mac ....");
       String mac = WiFi.macAddress();
+      // 2025-01-24 : mac 읽는 시간 추가
+      delay(1000);
       request->send(200, "text/plain", mac);
       
     });
@@ -628,7 +707,7 @@ void gotoSoftApSetup() {
             // Write file to save value
             writeFile(SPIFFS, ssidPath, ssid.c_str());
           }
-          // HTTP POST pass value
+          // HTTP POST password value
           if (p->name() == PARAM_INPUT_2) {
             pass = p->value().c_str();
             Serial.print("Password set to: ");
@@ -658,12 +737,14 @@ void gotoSoftApSetup() {
       request->send(200, "text/plain", "Done. ESP will restart, connect to your router and go to IP address: " + ip);
       
       
-      delay(2000);
+      // delay(2000);
 
       SetIniString("softap", "ssid", "operate");
 
       // wifiConnectionSuccess = false; // Set flag to false on failure
       // delay(10000); // Add a delay to ensure the HTTP response can be sent before restart, 10초를 기다린다. 
+
+     delay(2000);
 
       ESP.restart();
     });
@@ -675,7 +756,7 @@ void setup()
 
   
   Serial.begin(115200);
-  delay(1000);
+  delay(500);
 
   // 스위치 핀을 입력 모드로 설정
   pinMode(switchPin, INPUT);
@@ -723,7 +804,7 @@ void setup()
     gotoSoftApSetup();
   }
   else {
-    if(initWiFi("operate")){
+    if(initWiFi("operate", ssid, pass)){
           // Route for root / web page
               Serial.println("initWiFi OK");
               loop_start = "YES_OP";
@@ -957,6 +1038,7 @@ void loop()
       Serial.printf("\nwrite version %s to flash\n", version.c_str());
       SetIniString("software", "version", version);
     }
+   
     else if(command.equals("read version")){
       // Serial.println("read software version : ");
       // Serial.println(GetIniString("software", "version", "0"));
@@ -1034,7 +1116,8 @@ void loop()
 
     }
     else{
-      Serial.println("Serial input command error!!!!!!!!\n");
+      Serial.println(".....\n");
+      delay(10);
     }
 
     //  // Clear the input buffer after processing the command
