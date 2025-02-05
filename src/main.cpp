@@ -53,7 +53,7 @@ AsyncWebServer server(80);
 #define TXD2 17
 
 // 2024-07-10 : esp32 : software version 
-const String ESP32_SW_VERSION = "0.0.7";
+const String ESP32_SW_VERSION = "0.0.8";
 
 WiFiClientSecure net;
 PubSubClient client(net);
