@@ -34,6 +34,12 @@
 //2024-06-16 : Async WebServer 추가
 #include <ESPAsyncWebServer.h>
 #include <AsyncTCP.h>
+
+// 2025-02-05 DNS redirection
+#include <DNSServer.h>
+
+DNSServer dnsServer;
+
 // Create AsyncWebServer object on port 80
 AsyncWebServer server(80);
 
@@ -113,6 +119,8 @@ const unsigned long debounceDelay = 3000; // 3초 지연 시간 (밀리초)
 unsigned long switchPressedTime = 0; // 스위치가 눌린 시간
 bool switchState = LOW; // 현재 스위치 상태
 bool lastSwitchState = LOW; // 마지막 스위치 상태
+
+// 2025-02-05 : DNS redirection 지원
 
 
 void initializeAwsJson()
@@ -590,113 +598,188 @@ bool initWiFi(String cont, String ssid_str, String password) {
  
 
 
+// void gotoSoftApSetup() {
+//         // Connect to Wi-Fi network with SSID and password
+//     Serial.println("Setting AP (Access Point)");
+//     // NULL sets an open Access Point
+//     WiFi.softAP("ROOTONE-AI-AP", "ROOTONE-AI-PWD");
+
+//     IPAddress IP = WiFi.softAPIP();
+//     Serial.print("AP IP address: ");
+//     Serial.println(IP); 
+
+//     // Web Server Root URL
+//     server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
+//       Serial.println("http_get /....");
+
+//       request->send(200, "text/plain", "Wifi manager connection success");
+
+//       // request->send(SPIFFS, "/wifimanager.html", "text/html");
+//     });
+
+//     server.on("/mac", HTTP_GET, [](AsyncWebServerRequest *request){
+//       Serial.println("http_get /mac ....");
+//       String mac = WiFi.macAddress();
+//       // 2025-01-24 : mac 읽는 시간 추가
+//       delay(1000);
+//       request->send(200, "text/plain", mac);
+      
+//     });
+
+//     // wifi connection이 성공했는지 실패했는 지 확인.
+//     server.on("/status", HTTP_GET, [](AsyncWebServerRequest *request) {
+
+//       Serial.println("http_get /status rx....");
+      
+//     // if (wifiConnectionSuccess) {
+//     //   request->send(200, "text/plain", "Connected to WiFi successfully.");
+//     // } else {
+//     //   request->send(400, "text/plain", "Failed to connect to WiFi. Please check SSID and password.");
+//     // }
+//   });
+    
+//     server.serveStatic("/", SPIFFS, "/");
+    
+//     server.on("/", HTTP_POST, [](AsyncWebServerRequest *request) {
+
+//       Serial.println("http post rx");
+
+//       int params = request->params();
+      
+//       Serial.printf("http post rx params = %d \n", params);
+
+//       for(int i=0;i<params;i++){
+//         AsyncWebParameter* p = request->getParam(i);
+//          // 삼항 연산자를 사용하여 bool 값을 "true" 또는 "false" 문자열로 변환
+//         Serial.printf("The value of myBool is: %s\n", p->isPost() ? "true" : "false");
+
+//         Serial.printf(" p-> name = %s \n", p->name());
+
+//         if(p->isPost()){
+//           // HTTP POST ssid value
+//           if (p->name() == PARAM_INPUT_1) {
+//             ssid = p->value().c_str();
+//             Serial.print("SSID set to: ");
+//             Serial.println(ssid);
+//             // Write file to save value
+//             writeFile(SPIFFS, ssidPath, ssid.c_str());
+//           }
+//           // HTTP POST password value
+//           if (p->name() == PARAM_INPUT_2) {
+//             pass = p->value().c_str();
+//             Serial.print("Password set to: ");
+//             Serial.println(pass);
+//             // Write file to save value
+//             writeFile(SPIFFS, passPath, pass.c_str());
+//           }
+//           // HTTP POST ip value
+//           if (p->name() == PARAM_INPUT_3) {
+//             ip = p->value().c_str();
+//             Serial.print("IP Address set to: ");
+//             Serial.println(ip);
+//             // Write file to save value
+//             writeFile(SPIFFS, ipPath, ip.c_str());
+//           }
+//           // HTTP POST gateway value
+//           if (p->name() == PARAM_INPUT_4) {
+//             gateway = p->value().c_str();
+//             Serial.print("Gateway set to: ");
+//             Serial.println(gateway);
+//             // Write file to save value
+//             writeFile(SPIFFS, gatewayPath, gateway.c_str());
+//           }
+//           //Serial.printf("POST[%s]: %s\n", p->name().c_str(), p->value().c_str());
+//         }
+//       }
+//       request->send(200, "text/plain", "Done. ESP will restart, connect to your router and go to IP address: " + ip);
+      
+      
+//       // delay(2000);
+
+//       SetIniString("softap", "ssid", "operate");
+
+//       // wifiConnectionSuccess = false; // Set flag to false on failure
+//       // delay(10000); // Add a delay to ensure the HTTP response can be sent before restart, 10초를 기다린다. 
+
+//      delay(2000);
+
+//       ESP.restart();
+//     });
+//     server.begin();
+// }
+
 void gotoSoftApSetup() {
-        // Connect to Wi-Fi network with SSID and password
+    // Connect to Wi-Fi network with SSID and password
     Serial.println("Setting AP (Access Point)");
     // NULL sets an open Access Point
     WiFi.softAP("ROOTONE-AI-AP", "ROOTONE-AI-PWD");
 
     IPAddress IP = WiFi.softAPIP();
     Serial.print("AP IP address: ");
-    Serial.println(IP); 
+    Serial.println(IP);
+
+    // DNS 서버 시작
+    dnsServer.start(53, "*", IP); // 모든 도메인을 AP의 IP로 리다이렉션
 
     // Web Server Root URL
     server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
-      Serial.println("http_get /....");
-
-      request->send(200, "text/plain", "Wifi manager connection success");
-
-      // request->send(SPIFFS, "/wifimanager.html", "text/html");
+        Serial.println("http_get /....");
+        request->send(200, "text/plain", "Wifi manager connection success");
     });
 
     server.on("/mac", HTTP_GET, [](AsyncWebServerRequest *request){
-      Serial.println("http_get /mac ....");
-      String mac = WiFi.macAddress();
-      // 2025-01-24 : mac 읽는 시간 추가
-      delay(1000);
-      request->send(200, "text/plain", mac);
-      
+        Serial.println("http_get /mac ....");
+        String mac = WiFi.macAddress();
+        delay(1000);
+        request->send(200, "text/plain", mac);
     });
 
-    // wifi connection이 성공했는지 실패했는 지 확인.
     server.on("/status", HTTP_GET, [](AsyncWebServerRequest *request) {
-
-      Serial.println("http_get /status rx....");
-      
-    // if (wifiConnectionSuccess) {
-    //   request->send(200, "text/plain", "Connected to WiFi successfully.");
-    // } else {
-    //   request->send(400, "text/plain", "Failed to connect to WiFi. Please check SSID and password.");
-    // }
-  });
-    
-    server.serveStatic("/", SPIFFS, "/");
-    
-    server.on("/", HTTP_POST, [](AsyncWebServerRequest *request) {
-
-      Serial.println("http post rx");
-
-      int params = request->params();
-      
-      Serial.printf("http post rx params = %d \n", params);
-
-      for(int i=0;i<params;i++){
-        AsyncWebParameter* p = request->getParam(i);
-         // 삼항 연산자를 사용하여 bool 값을 "true" 또는 "false" 문자열로 변환
-        Serial.printf("The value of myBool is: %s\n", p->isPost() ? "true" : "false");
-
-        Serial.printf(" p-> name = %s \n", p->name());
-
-        if(p->isPost()){
-          // HTTP POST ssid value
-          if (p->name() == PARAM_INPUT_1) {
-            ssid = p->value().c_str();
-            Serial.print("SSID set to: ");
-            Serial.println(ssid);
-            // Write file to save value
-            writeFile(SPIFFS, ssidPath, ssid.c_str());
-          }
-          // HTTP POST password value
-          if (p->name() == PARAM_INPUT_2) {
-            pass = p->value().c_str();
-            Serial.print("Password set to: ");
-            Serial.println(pass);
-            // Write file to save value
-            writeFile(SPIFFS, passPath, pass.c_str());
-          }
-          // HTTP POST ip value
-          if (p->name() == PARAM_INPUT_3) {
-            ip = p->value().c_str();
-            Serial.print("IP Address set to: ");
-            Serial.println(ip);
-            // Write file to save value
-            writeFile(SPIFFS, ipPath, ip.c_str());
-          }
-          // HTTP POST gateway value
-          if (p->name() == PARAM_INPUT_4) {
-            gateway = p->value().c_str();
-            Serial.print("Gateway set to: ");
-            Serial.println(gateway);
-            // Write file to save value
-            writeFile(SPIFFS, gatewayPath, gateway.c_str());
-          }
-          //Serial.printf("POST[%s]: %s\n", p->name().c_str(), p->value().c_str());
-        }
-      }
-      request->send(200, "text/plain", "Done. ESP will restart, connect to your router and go to IP address: " + ip);
-      
-      
-      // delay(2000);
-
-      SetIniString("softap", "ssid", "operate");
-
-      // wifiConnectionSuccess = false; // Set flag to false on failure
-      // delay(10000); // Add a delay to ensure the HTTP response can be sent before restart, 10초를 기다린다. 
-
-     delay(2000);
-
-      ESP.restart();
+        Serial.println("http_get /status rx....");
     });
+
+    server.serveStatic("/", SPIFFS, "/");
+
+    server.on("/", HTTP_POST, [](AsyncWebServerRequest *request) {
+        Serial.println("http post rx");
+        int params = request->params();
+        Serial.printf("http post rx params = %d \n", params);
+
+        for(int i = 0; i < params; i++) {
+            AsyncWebParameter* p = request->getParam(i);
+            if(p->isPost()) {
+                if (p->name() == PARAM_INPUT_1) {
+                    ssid = p->value().c_str();
+                    Serial.print("SSID set to: ");
+                    Serial.println(ssid);
+                    writeFile(SPIFFS, ssidPath, ssid.c_str());
+                }
+                if (p->name() == PARAM_INPUT_2) {
+                    pass = p->value().c_str();
+                    Serial.print("Password set to: ");
+                    Serial.println(pass);
+                    writeFile(SPIFFS, passPath, pass.c_str());
+                }
+                if (p->name() == PARAM_INPUT_3) {
+                    ip = p->value().c_str();
+                    Serial.print("IP Address set to: ");
+                    Serial.println(ip);
+                    writeFile(SPIFFS, ipPath, ip.c_str());
+                }
+                if (p->name() == PARAM_INPUT_4) {
+                    gateway = p->value().c_str();
+                    Serial.print("Gateway set to: ");
+                    Serial.println(gateway);
+                    writeFile(SPIFFS, gatewayPath, gateway.c_str());
+                }
+            }
+        }
+        request->send(200, "text/plain", "Done. ESP will restart, connect to your router and go to IP address: " + ip);
+        SetIniString("softap", "ssid", "operate");
+        delay(2000);
+        ESP.restart();
+    });
+
     server.begin();
 }
 
@@ -895,7 +978,7 @@ void readSwitchPort() {
 void loop()
 {
 
-
+    
   if(loop_start == "YES_OP"){
 
         if (!client.connected()) {
@@ -922,6 +1005,11 @@ void loop()
       };
 
      
+  }
+  else{
+    // DNS 요청 처리
+    dnsServer.processNextRequest();
+
   }
   
 
@@ -1083,64 +1171,3 @@ void loop()
 }
 
 
-
-
-/*************** ******************************
- 
-// Initialize WiFi
-bool initWiFi(String cont, String ssid_str, String password) {
-  // if(ssid=="" || ip==""){
-  if((ssid_str == "") || (cont == "init_ap")){
-    Serial.println("Undefined SSID or IP address.");
-    return false;
-  }
-
-  Serial.println("ssid_str =");
-  Serial.println(ssid_str);
-  Serial.println("password =");
-  Serial.println(password);
-
-  WiFi.mode(WIFI_STA);
-
-  // 2024-06-16 : ssid, password setting 
-  WiFi.begin(ssid_str, password);
-
-// 2025-01-23 : wifi 연결하는 동안 기다려준다. access point 기기 마다 시간이 걸릴 수 있다. 
-  delay(3000);
-  // WiFi.begin(ssid.c_str(), );
-  Serial.println("Connecting to WiFi...");
-
-// 2025-01-25 : WiFi.begin()의 경우 ipTime 2004S와 연결 시에 New ip를 할당받지 못하는 경우가 발생할 수 있다. 이렇게 되면 status는 idle 모드가 온다. retry를 해야 한다. ESP.restart()를 콜해서 다시 시작을 하면, WL_CONNECTED 모드가 온다. 
-
-  if (WiFi.status() == WL_CONNECTED) {
-    Serial.println("=======WL_CONNECTED========");
-    // Serial.println("WiFi connected");
-    Serial.println("IP address: ");
-    Serial.println(WiFi.localIP());
-    return true;
-  } else if (WiFi.status() == WL_IDLE_STATUS) {
-    Serial.println("=======WL_IDLE========");
-    // Serial.println("WiFi connected");
-    Serial.println("IP address: ");
-    Serial.println(WiFi.localIP());
-
-    
-    ESP.restart();
-  
-  } 
-  
-  
-  else {
-    Serial.println("");
-    Serial.println("WiFi connection failed");
-
-    return false;
-  }
-
-// swg_2_4G, krt
-  
-
-
-}
-
-*****************************************************/
