@@ -529,9 +529,12 @@ bool initWiFi(String cont, String ssid_str, String password) {
 
   // 이전 재시도 횟수 불러오기
   int restartCount = preferences.getInt("restartCount", 0);
+  Serial.println("restartCount");
+  Serial.println(restartCount);
 
   if (restartCount >= 10) {
     Serial.println("Exceeded maximum restart attempts. Connection failed.");
+    preferences.putInt("restartCount", 0);
     preferences.end(); // NVS 닫기
     return false;
   }
@@ -563,8 +566,9 @@ bool initWiFi(String cont, String ssid_str, String password) {
     preferences.end();
     return true;
   } else if (WiFi.status() == WL_IDLE_STATUS) {
-    Serial.print(restartCount);
+    
     Serial.println("=======WL_IDLE========");
+    Serial.print(restartCount);
     
     Serial.println("Restarting ESP...");
 
@@ -573,6 +577,7 @@ bool initWiFi(String cont, String ssid_str, String password) {
     preferences.putInt("restartCount", restartCount);
     preferences.end();
     ESP.restart();
+    
   } else {
     Serial.println("WiFi connection failed.");
     preferences.putInt("restartCount", 0);
@@ -581,65 +586,9 @@ bool initWiFi(String cont, String ssid_str, String password) {
   }
 }
 
-/*************** ******************************
+
  
-// Initialize WiFi
-bool initWiFi(String cont, String ssid_str, String password) {
-  // if(ssid=="" || ip==""){
-  if((ssid_str == "") || (cont == "init_ap")){
-    Serial.println("Undefined SSID or IP address.");
-    return false;
-  }
 
-  Serial.println("ssid_str =");
-  Serial.println(ssid_str);
-  Serial.println("password =");
-  Serial.println(password);
-
-  WiFi.mode(WIFI_STA);
-
-  // 2024-06-16 : ssid, password setting 
-  WiFi.begin(ssid_str, password);
-
-// 2025-01-23 : wifi 연결하는 동안 기다려준다. access point 기기 마다 시간이 걸릴 수 있다. 
-  delay(3000);
-  // WiFi.begin(ssid.c_str(), );
-  Serial.println("Connecting to WiFi...");
-
-// 2025-01-25 : WiFi.begin()의 경우 ipTime 2004S와 연결 시에 New ip를 할당받지 못하는 경우가 발생할 수 있다. 이렇게 되면 status는 idle 모드가 온다. retry를 해야 한다. ESP.restart()를 콜해서 다시 시작을 하면, WL_CONNECTED 모드가 온다. 
-
-  if (WiFi.status() == WL_CONNECTED) {
-    Serial.println("=======WL_CONNECTED========");
-    // Serial.println("WiFi connected");
-    Serial.println("IP address: ");
-    Serial.println(WiFi.localIP());
-    return true;
-  } else if (WiFi.status() == WL_IDLE_STATUS) {
-    Serial.println("=======WL_IDLE========");
-    // Serial.println("WiFi connected");
-    Serial.println("IP address: ");
-    Serial.println(WiFi.localIP());
-
-    
-    ESP.restart();
-  
-  } 
-  
-  
-  else {
-    Serial.println("");
-    Serial.println("WiFi connection failed");
-
-    return false;
-  }
-
-// swg_2_4G, krt
-  
-
-
-}
-
-*****************************************************/
 
 void gotoSoftApSetup() {
         // Connect to Wi-Fi network with SSID and password
@@ -789,6 +738,9 @@ void setup()
   // 2024-07-09 : version 초기화, 초기화하지 않고 읽으면 에러가 발생한다. 
   SetIniString("software", "version", ESP32_SW_VERSION.c_str());
 
+  // 2025-02-05 : wifi 세팅을 
+  preferences.putInt("restartCount", 0);
+
   if (check_ssid == "init_ap") {
     // No stored SSID, start WiFiManager
     Serial.println("check_ssid is init_ap ....");
@@ -879,15 +831,6 @@ void deleteFile(fs::FS &fs, const char * path) {
 
 void deleteAllFiles(){
 
-  // // 파일 경로
-  // const char* filePath = "/aws.json";
-
-  // // 파일 삭제 시도
-  // if (SPIFFS.remove(filePath)) {
-  //   Serial.println("AWS JSON file deleted successfully");
-  // } else {
-  //   Serial.println("Failed to delete AWS JSON file");
-  // }
 
   // 파일 삭제 함수 호출
   deleteFile(SPIFFS, ssidPath);
@@ -896,44 +839,7 @@ void deleteAllFiles(){
   deleteFile(SPIFFS, gatewayPath);
 }
 
-/*
 
-boolean checkSoftApKey3Sec() {
-
-  int currentSwitchState = digitalRead(switchPin);
-
-  // 스위치가 눌린 상태에서 눌림이 해제된 상태로 변환된 경우
-  if (currentSwitchState != lastSwitchState) {
-    if (currentSwitchState == HIGH) {
-      // 스위치가 눌리기 시작한 시간 기록
-      switchPressedTime = millis();
-    } 
-    // 스위치가 눌림에서 해제된 상태로 변경된 경우
-    else if (currentSwitchState == LOW) {
-      // 스위치가 해제된 경우 상태를 OFF로 설정
-      switchState = LOW;
-    }
-    // 마지막 스위치 상태 업데이트
-    lastSwitchState = currentSwitchState;
-    
-  }
-
-  // 스위치가 눌린 상태를 3초 동안 유지하는지 확인
-  if (currentSwitchState == HIGH && (millis() - switchPressedTime >= debounceDelay)) {
-    switchState = HIGH;
-  }
-
-
-  // 현재 스위치 상태에 따라 시리얼 모니터에 출력
-  if (switchState == HIGH) {
-    Serial.println("Switch is ON");
-    return true;
-  } else {
-    // Serial.println("Switch is OFF");
-    return false;
-  }
-}
-*/
 
 boolean checkSoftApKey3Sec() {
 
@@ -1023,14 +929,14 @@ void loop()
   if (Serial.available()) {
 
     // // 2024-07-25 : '\r', '\n' 이 없는 경우 무한 루프에 빠지지 않도록 한다.  
-    // Serial.setTimeout(2000);  // Set a timeout of 1000 milliseconds (1 second)
+    Serial.setTimeout(3000);  // Set a timeout of 1000 milliseconds (1 second)
 
     String command = Serial.readStringUntil('\n');
     command.trim();  // 공백 제거
 
 
     // Check if the command starts with "write serial#"
-    if (command.startsWith("write version:")) {
+    if (command.startsWith("write:")) {
       // ":" delimiter로 message를 분리
       int delimiterIndex = command.indexOf(':');
       String version = command.substring(delimiterIndex + 1);
@@ -1039,7 +945,7 @@ void loop()
       SetIniString("software", "version", version);
     }
    
-    else if(command.equals("read version")){
+    else if(command.equals("read")){
       // Serial.println("read software version : ");
       // Serial.println(GetIniString("software", "version", "0"));
       Serial.printf("\nread version %s from flash\n", GetIniString("software", "version", "0").c_str());
@@ -1056,7 +962,7 @@ void loop()
     }
 
     // 2024-06-09 : stm 보드에서 추가 구현, softAP reset이 오면 이렇게 처리를 하면 된다. 추가 구현
-    else if(command.equals("reset softap")){
+    else if(command.equals("reset")){
         Serial.println("\n\n reset softAp  \n\n");
         
         SetIniString("softap", "ssid", "init_ap");
@@ -1067,7 +973,7 @@ void loop()
     }
     
     //2024-06-09 : mac address를 얻어낸다. 
-    else if(command.equals("mac address")){
+    else if(command.equals("mac")){
         String macAddress = WiFi.macAddress();
         
         if (macAddress.length() == 0) {
@@ -1116,8 +1022,8 @@ void loop()
 
     }
     else{
-      Serial.println(".....\n");
-      delay(10);
+      Serial.println("input command error...\n");
+      delay(2000);
     }
 
     //  // Clear the input buffer after processing the command
@@ -1175,3 +1081,66 @@ void loop()
   //2024-05-29 : 10ms 마다 한번씩 체크한다. 시간을 획기적으로 줄였다.
   delay(10);
 }
+
+
+
+
+/*************** ******************************
+ 
+// Initialize WiFi
+bool initWiFi(String cont, String ssid_str, String password) {
+  // if(ssid=="" || ip==""){
+  if((ssid_str == "") || (cont == "init_ap")){
+    Serial.println("Undefined SSID or IP address.");
+    return false;
+  }
+
+  Serial.println("ssid_str =");
+  Serial.println(ssid_str);
+  Serial.println("password =");
+  Serial.println(password);
+
+  WiFi.mode(WIFI_STA);
+
+  // 2024-06-16 : ssid, password setting 
+  WiFi.begin(ssid_str, password);
+
+// 2025-01-23 : wifi 연결하는 동안 기다려준다. access point 기기 마다 시간이 걸릴 수 있다. 
+  delay(3000);
+  // WiFi.begin(ssid.c_str(), );
+  Serial.println("Connecting to WiFi...");
+
+// 2025-01-25 : WiFi.begin()의 경우 ipTime 2004S와 연결 시에 New ip를 할당받지 못하는 경우가 발생할 수 있다. 이렇게 되면 status는 idle 모드가 온다. retry를 해야 한다. ESP.restart()를 콜해서 다시 시작을 하면, WL_CONNECTED 모드가 온다. 
+
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.println("=======WL_CONNECTED========");
+    // Serial.println("WiFi connected");
+    Serial.println("IP address: ");
+    Serial.println(WiFi.localIP());
+    return true;
+  } else if (WiFi.status() == WL_IDLE_STATUS) {
+    Serial.println("=======WL_IDLE========");
+    // Serial.println("WiFi connected");
+    Serial.println("IP address: ");
+    Serial.println(WiFi.localIP());
+
+    
+    ESP.restart();
+  
+  } 
+  
+  
+  else {
+    Serial.println("");
+    Serial.println("WiFi connection failed");
+
+    return false;
+  }
+
+// swg_2_4G, krt
+  
+
+
+}
+
+*****************************************************/
