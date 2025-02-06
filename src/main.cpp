@@ -40,6 +40,11 @@
 
 DNSServer dnsServer;
 
+// SoftAP의 고정 IP 설정 (IP, Gateway, Subnet Mask)
+IPAddress local_DNS(192,168,4,1);
+IPAddress gateway_DNS(192,168,4,1);
+IPAddress subnet_DNS(255,255,255,0);
+
 // Create AsyncWebServer object on port 80
 AsyncWebServer server(80);
 
@@ -59,7 +64,7 @@ AsyncWebServer server(80);
 #define TXD2 17
 
 // 2024-07-10 : esp32 : software version 
-const String ESP32_SW_VERSION = "0.0.9.1";
+const String ESP32_SW_VERSION = "0.0.9.4";
 
 WiFiClientSecure net;
 PubSubClient client(net);
@@ -595,124 +600,19 @@ bool initWiFi(String cont, String ssid_str, String password) {
 }
 
 
- 
-
-
-// void gotoSoftApSetup() {
-//         // Connect to Wi-Fi network with SSID and password
-//     Serial.println("Setting AP (Access Point)");
-//     // NULL sets an open Access Point
-//     WiFi.softAP("ROOTONE-AI-AP", "ROOTONE-AI-PWD");
-
-//     IPAddress IP = WiFi.softAPIP();
-//     Serial.print("AP IP address: ");
-//     Serial.println(IP); 
-
-//     // Web Server Root URL
-//     server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
-//       Serial.println("http_get /....");
-
-//       request->send(200, "text/plain", "Wifi manager connection success");
-
-//       // request->send(SPIFFS, "/wifimanager.html", "text/html");
-//     });
-
-//     server.on("/mac", HTTP_GET, [](AsyncWebServerRequest *request){
-//       Serial.println("http_get /mac ....");
-//       String mac = WiFi.macAddress();
-//       // 2025-01-24 : mac 읽는 시간 추가
-//       delay(1000);
-//       request->send(200, "text/plain", mac);
-      
-//     });
-
-//     // wifi connection이 성공했는지 실패했는 지 확인.
-//     server.on("/status", HTTP_GET, [](AsyncWebServerRequest *request) {
-
-//       Serial.println("http_get /status rx....");
-      
-//     // if (wifiConnectionSuccess) {
-//     //   request->send(200, "text/plain", "Connected to WiFi successfully.");
-//     // } else {
-//     //   request->send(400, "text/plain", "Failed to connect to WiFi. Please check SSID and password.");
-//     // }
-//   });
-    
-//     server.serveStatic("/", SPIFFS, "/");
-    
-//     server.on("/", HTTP_POST, [](AsyncWebServerRequest *request) {
-
-//       Serial.println("http post rx");
-
-//       int params = request->params();
-      
-//       Serial.printf("http post rx params = %d \n", params);
-
-//       for(int i=0;i<params;i++){
-//         AsyncWebParameter* p = request->getParam(i);
-//          // 삼항 연산자를 사용하여 bool 값을 "true" 또는 "false" 문자열로 변환
-//         Serial.printf("The value of myBool is: %s\n", p->isPost() ? "true" : "false");
-
-//         Serial.printf(" p-> name = %s \n", p->name());
-
-//         if(p->isPost()){
-//           // HTTP POST ssid value
-//           if (p->name() == PARAM_INPUT_1) {
-//             ssid = p->value().c_str();
-//             Serial.print("SSID set to: ");
-//             Serial.println(ssid);
-//             // Write file to save value
-//             writeFile(SPIFFS, ssidPath, ssid.c_str());
-//           }
-//           // HTTP POST password value
-//           if (p->name() == PARAM_INPUT_2) {
-//             pass = p->value().c_str();
-//             Serial.print("Password set to: ");
-//             Serial.println(pass);
-//             // Write file to save value
-//             writeFile(SPIFFS, passPath, pass.c_str());
-//           }
-//           // HTTP POST ip value
-//           if (p->name() == PARAM_INPUT_3) {
-//             ip = p->value().c_str();
-//             Serial.print("IP Address set to: ");
-//             Serial.println(ip);
-//             // Write file to save value
-//             writeFile(SPIFFS, ipPath, ip.c_str());
-//           }
-//           // HTTP POST gateway value
-//           if (p->name() == PARAM_INPUT_4) {
-//             gateway = p->value().c_str();
-//             Serial.print("Gateway set to: ");
-//             Serial.println(gateway);
-//             // Write file to save value
-//             writeFile(SPIFFS, gatewayPath, gateway.c_str());
-//           }
-//           //Serial.printf("POST[%s]: %s\n", p->name().c_str(), p->value().c_str());
-//         }
-//       }
-//       request->send(200, "text/plain", "Done. ESP will restart, connect to your router and go to IP address: " + ip);
-      
-      
-//       // delay(2000);
-
-//       SetIniString("softap", "ssid", "operate");
-
-//       // wifiConnectionSuccess = false; // Set flag to false on failure
-//       // delay(10000); // Add a delay to ensure the HTTP response can be sent before restart, 10초를 기다린다. 
-
-//      delay(2000);
-
-//       ESP.restart();
-//     });
-//     server.begin();
-// }
 
 void gotoSoftApSetup() {
     // Connect to Wi-Fi network with SSID and password
     Serial.println("Setting AP (Access Point)");
     // NULL sets an open Access Point
+
+    // SoftAP 시작 (고정 IP 설정 추가)
+    WiFi.softAPConfig(local_DNS, gateway_DNS, subnet_DNS);
     WiFi.softAP("ROOTONE-AI-AP", "ROOTONE-AI-PWD");
+
+    // WiFi.softAPsetHostname("ESP32_AP");  // AP 이름 설정
+    WiFi.setSleep(false);   
+    
 
     IPAddress IP = WiFi.softAPIP();
     Serial.print("AP IP address: ");
@@ -788,6 +688,77 @@ void gotoSoftApSetup() {
     });
 
     server.begin();
+}
+
+
+void deleteFile(fs::FS &fs, const char * path) {
+  Serial.printf("Deleting file: %s\n", path);
+
+  // 파일 삭제 시도
+  if (fs.remove(path)) {
+    Serial.println("File deleted successfully");
+  } else {
+    Serial.println("Failed to delete file");
+  }
+}
+
+void deleteAllFiles(){
+  // 파일 삭제 함수 호출
+  deleteFile(SPIFFS, ssidPath);
+  deleteFile(SPIFFS, passPath);
+  deleteFile(SPIFFS, ipPath);
+  deleteFile(SPIFFS, gatewayPath);
+}
+
+boolean checkSoftApKey3Sec() {
+
+  int currentSwitchState = digitalRead(switchPin);
+
+  // 스위치 상태가 변경된 경우 처리
+  if (currentSwitchState != lastSwitchState) {
+    // 스위치가 눌린 상태로 변경된 경우
+    if (currentSwitchState == HIGH) {
+      switchPressedTime = millis();
+    }
+    // 스위치가 해제된 상태로 변경된 경우
+    else if (currentSwitchState == LOW) {
+      switchState = LOW;
+    }
+    // 마지막 스위치 상태 업데이트
+    lastSwitchState = currentSwitchState;
+  }
+
+  // 스위치가 눌린 상태를 3초 동안 유지하는지 확인
+  if (currentSwitchState == HIGH && (millis() - switchPressedTime >= debounceDelay)) {
+    switchState = HIGH;
+  } else {
+    // 스위치가 눌린 상태가 아니거나 debounceDelay를 충족하지 못한 경우
+    return false;
+  }
+
+  // 현재 스위치 상태에 따라 시리얼 모니터에 출력
+  if (switchState == HIGH) {
+    Serial.println("Switch is ON");
+    return true;
+  } else {
+    // 이 부분은 실행되지 않지만 안전을 위해 남겨둠
+    return false;
+  }
+}
+
+void readSwitchPort() {
+  // 스위치 상태 읽기
+  int switchState = digitalRead(switchPin);
+
+  // 스위치 상태에 따라 시리얼 모니터에 출력
+  if (switchState == HIGH) {
+    Serial.println("Switch is ON");
+  } else {
+    Serial.println("Switch is OFF");
+  }
+
+  // 500ms 대기
+  delay(500);
 }
 
 void setup()
@@ -908,80 +879,6 @@ void setup()
 
 }
 
-void deleteFile(fs::FS &fs, const char * path) {
-  Serial.printf("Deleting file: %s\n", path);
-
-  // 파일 삭제 시도
-  if (fs.remove(path)) {
-    Serial.println("File deleted successfully");
-  } else {
-    Serial.println("Failed to delete file");
-  }
-}
-
-void deleteAllFiles(){
-
-
-  // 파일 삭제 함수 호출
-  deleteFile(SPIFFS, ssidPath);
-  deleteFile(SPIFFS, passPath);
-  deleteFile(SPIFFS, ipPath);
-  deleteFile(SPIFFS, gatewayPath);
-}
-
-
-
-boolean checkSoftApKey3Sec() {
-
-  int currentSwitchState = digitalRead(switchPin);
-
-  // 스위치 상태가 변경된 경우 처리
-  if (currentSwitchState != lastSwitchState) {
-    // 스위치가 눌린 상태로 변경된 경우
-    if (currentSwitchState == HIGH) {
-      switchPressedTime = millis();
-    }
-    // 스위치가 해제된 상태로 변경된 경우
-    else if (currentSwitchState == LOW) {
-      switchState = LOW;
-    }
-    // 마지막 스위치 상태 업데이트
-    lastSwitchState = currentSwitchState;
-  }
-
-  // 스위치가 눌린 상태를 3초 동안 유지하는지 확인
-  if (currentSwitchState == HIGH && (millis() - switchPressedTime >= debounceDelay)) {
-    switchState = HIGH;
-  } else {
-    // 스위치가 눌린 상태가 아니거나 debounceDelay를 충족하지 못한 경우
-    return false;
-  }
-
-  // 현재 스위치 상태에 따라 시리얼 모니터에 출력
-  if (switchState == HIGH) {
-    Serial.println("Switch is ON");
-    return true;
-  } else {
-    // 이 부분은 실행되지 않지만 안전을 위해 남겨둠
-    return false;
-  }
-}
-
-void readSwitchPort() {
-  // 스위치 상태 읽기
-  int switchState = digitalRead(switchPin);
-
-  // 스위치 상태에 따라 시리얼 모니터에 출력
-  if (switchState == HIGH) {
-    Serial.println("Switch is ON");
-  } else {
-    Serial.println("Switch is OFF");
-  }
-
-  // 500ms 대기
-  delay(500);
-}
-
 void loop()
 {
 
@@ -1016,7 +913,6 @@ void loop()
   else{
     // DNS 요청 처리
     dnsServer.processNextRequest();
-    
 
   }
   
