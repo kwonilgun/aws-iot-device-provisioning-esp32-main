@@ -59,7 +59,7 @@ AsyncWebServer server(80);
 #define TXD2 17
 
 // 2024-07-10 : esp32 : software version 
-const String ESP32_SW_VERSION = "0.0.7";
+const String ESP32_SW_VERSION = "0.0.9.1";
 
 WiFiClientSecure net;
 PubSubClient client(net);
@@ -727,6 +727,11 @@ void gotoSoftApSetup() {
         request->send(200, "text/plain", "Wifi manager connection success");
     });
 
+    server.onNotFound([](AsyncWebServerRequest *request){
+        Serial.printf("Not found: %s\n", request->url().c_str());
+        request->send(404, "text/plain", "Not found");
+    });
+
     server.on("/mac", HTTP_GET, [](AsyncWebServerRequest *request){
         Serial.println("http_get /mac ....");
         String mac = WiFi.macAddress();
@@ -1009,6 +1014,7 @@ void loop()
   else{
     // DNS 요청 처리
     dnsServer.processNextRequest();
+    
 
   }
   
