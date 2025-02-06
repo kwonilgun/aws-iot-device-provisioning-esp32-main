@@ -721,6 +721,8 @@ void gotoSoftApSetup() {
     // DNS 서버 시작
     dnsServer.start(53, "*", IP); // 모든 도메인을 AP의 IP로 리다이렉션
 
+    server.serveStatic("/", SPIFFS, "/");
+
     // Web Server Root URL
     server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
         Serial.println("http_get /....");
@@ -743,7 +745,7 @@ void gotoSoftApSetup() {
         Serial.println("http_get /status rx....");
     });
 
-    server.serveStatic("/", SPIFFS, "/");
+   
 
     server.on("/", HTTP_POST, [](AsyncWebServerRequest *request) {
         Serial.println("http post rx");
