@@ -64,7 +64,7 @@ AsyncWebServer server(80);
 #define TXD2 17
 
 // 2024-07-10 : esp32 : software version 
-const String ESP32_SW_VERSION = "0.0.9.4";
+const String ESP32_SW_VERSION = "0.1.5";
 
 WiFiClientSecure net;
 PubSubClient client(net);
@@ -579,6 +579,8 @@ bool initWiFi(String cont, String ssid_str, String password) {
     preferences.end();
     return true;
   } else if (WiFi.status() == WL_IDLE_STATUS) {
+
+    // 2025-02-09 : 이 부분은 iptime 공유기에서 최초 시도시에 idle이 온다. retry를 하면 connect가 된다. 이것을 지원하기 위해서 추가를 함.
     
     Serial.println("=======WL_IDLE========");
     Serial.print(restartCount);
@@ -680,7 +682,8 @@ void gotoSoftApSetup() {
                     writeFile(SPIFFS, gatewayPath, gateway.c_str());
                 }
             }
-        }
+        };
+        
         request->send(200, "text/plain", "Done. ESP will restart, connect to your router and go to IP address: " + ip);
         SetIniString("softap", "ssid", "operate");
         delay(2000);

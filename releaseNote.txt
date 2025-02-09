@@ -3,6 +3,9 @@
      . '/n', '/r' 없이 read version, mac address 2초 후에 자동 reading
      .  업로드 후에 가비지 생기는 문제 발생, 하드웨어 리셋으로 처리
 
-2025-01-25 : esp - version 0.1.0     
+2025-01-25 : esp - version 0.1.5     
      . main.cpp 수정 : ipTime A2004S 설정 안되는 문제 Fix
       - WiFi.begin 시에 idle 모드가 return 되는 경우 reboot를 해서 connected 모드가 설정되도록 함. 
+     . esp32 AP mode에서 ssid 를 ROOTONE-AI-AP로 최종 확정하고, LGE G5모델이 wifi 연결 시에 wifi 에러가 나는 경우는 스마트폰에서  ROOTONE-AI-AP를 초기에 삭제를 하고 실행하면 문제가 해결이 된다. 
+     . mac address 획득 에러 발생 처리를 위해서 dns로 변경하고, 스마트 폰 앱에서 mac address 에러가 발생하는 경우, 재 시도를 하면 이 문제는 해결이 되었다. 
+     
